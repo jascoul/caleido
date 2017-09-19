@@ -24,7 +24,14 @@ setup(name='scributor',
       packages=find_packages(),
       include_package_data=True,
       zip_safe=False,
-      install_requires=['cornice', 'waitress'],
+      install_requires=['cornice',
+                        'waitress',
+                        'sqlalchemy',
+                        'sqlalchemy-utils',
+                        'pyramid_tm',
+                        'zope.sqlalchemy',
+                        'psycopg2',
+                        'intervals'],
       entry_points="""\
       [paste.app_factory]
       main=scributor:main
