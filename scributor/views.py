@@ -2,8 +2,7 @@ import colander
 from cornice import Service
 from cornice.service import get_services
 from cornice.validators import colander_body_validator
-from wsgiref.simple_server import make_server
-from pyramid.config import Configurator
+from pyramid.view import view_config
 from cornice_swagger import CorniceSwagger
 
 
@@ -73,4 +72,6 @@ def get_info(request):
     return {'Hello': 'World'}
 
 
-
+@view_config(route_name='swagger_ui', renderer='templates/swagger.pt')
+def swagger_ui_view(request):
+    return {'swagger_api_url': request.route_url('OpenAPI')}
