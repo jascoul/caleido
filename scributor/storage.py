@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker
 import zope.sqlalchemy
 import transaction
 
-from scributor.models import Base
+from scributor.models import Base, User, UserGroup
 
 class Storage(object):
     def __init__(self, settings):
@@ -19,6 +19,21 @@ class Storage(object):
 
     def drop_all(self):
         Base.metadata.drop_all(self.engine)
+
+    def initialize(self, admin_principal, admin_credential):
+        session = self.session()
+        user_groups = {100: 'Admin',
+                       80: 'Manager',
+                       60: 'Editor',
+                       40: 'Owner',
+                       10: 'Viewer'}
+        for id, label in user_groups.items():
+            session.add(UserGroup(id=id, label=label))
+        transaction.commit()
+        session.add(User(principal=admin_principal,
+                         credential=admin_credential,
+                         user_group=100))
+        transaction.commit()
 
 def get_engine(settings, prefix='sqlalchemy.'):
     return engine_from_config(settings, prefix)

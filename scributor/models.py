@@ -120,7 +120,7 @@ class Account(Base):
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, Sequence('users_id_seq'), primary_key=True)
-    user_group = Column(Unicode(32),
+    user_group = Column(Integer(),
                         ForeignKey('user_groups.id'),
                         nullable=False)
     principal = Column(Unicode(128), index=True, nullable=False)

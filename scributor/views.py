@@ -6,6 +6,21 @@ from pyramid.view import view_config
 from cornice_swagger import CorniceSwagger
 
 
+user_api = Service(name='user_api',
+                   path='/api/v1/users/{id}',
+                   description='Users Service')
+
+class UsersAPI(object):
+    "Users Service"
+
+    @user_api.get(tags=['auth'])
+    def get_value(request):
+        """Returns the value."""
+        key = request.matchdict['key']
+        return _VALUES.get(key)
+    
+    
+
 _VALUES = {}
 
 
@@ -64,14 +79,13 @@ def openAPI_v1_spec(request):
     my_spec = doc.generate('MyAPI', '1.0.0')
     return my_spec
 
+@view_config(route_name='swagger_ui', renderer='templates/swagger.pt')
+def swagger_ui_view(request):
+    return {'swagger_api_url': request.route_url('OpenAPI')}
+
 hello = Service(name='hello', path='/', description="Simplest app")
 
 @hello.get()
 def get_info(request):
     """Returns Hello in JSON."""
     return {'Hello': 'World'}
-
-
-@view_config(route_name='swagger_ui', renderer='templates/swagger.pt')
-def swagger_ui_view(request):
-    return {'swagger_api_url': request.route_url('OpenAPI')}

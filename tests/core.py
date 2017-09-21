@@ -19,8 +19,8 @@ class BaseTest(unittest.TestCase):
         self.storage = self.app.registry['storage']
         self.api = WebTestApp(self.app)
     
-    def init_database(self):
         self.storage.create_all()
+        self.storage.initialize('admin', 'admin')
         
     def tearDown(self):
         testing.tearDown()
