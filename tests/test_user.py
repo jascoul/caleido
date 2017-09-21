@@ -2,7 +2,7 @@ import unittest
 
 import transaction
 from pyramid import testing
-from webtest import TestApp
+from webtest import TestApp as WebTestApp
 
 from scributor import main
 
@@ -19,36 +19,20 @@ class BaseTest(unittest.TestCase):
         return app_settings
         
     def setUp(self):
-        self.config = testing.setUp(settings=self.app_settings())
-        
-        self.config.include('scributor.models')
-        settings = self.config.get_settings()
-
-        from scributor.models import (
-            get_engine,
-            get_session_factory,
-            get_tm_session,
-            )
-
-        self.engine = get_engine(settings)
-        session_factory = get_session_factory(self.engine)
-
-        self.session = get_tm_session(session_factory, transaction.manager)
-
+        self.app = main({}, **self.app_settings())
+        self.storage = self.app.registry['storage']
+        self.api = WebTestApp(self.app)
+    
     def init_database(self):
-        from scributor.models import Base
-        Base.metadata.create_all(self.engine)
-
+        self.storage.create_all()
+        
     def tearDown(self):
-        from scributor.models import Base
-
         testing.tearDown()
         transaction.abort()
-        Base.metadata.drop_all(self.engine)
-
+        self.storage.drop_all()
+        
 class ScributorTest(BaseTest):
 
     def test_case(self):
-        app = TestApp(main({}, **self.app_settings()))
-        app.get('/status', status=404)
+        self.api.get('/status', status=404)
         
