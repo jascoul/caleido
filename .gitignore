@@ -1,4 +1,6 @@
 scributor.egg-info
 scributor/__pycache__
+tests/__pycache__
 .tox
 .cache
+*.pyc
