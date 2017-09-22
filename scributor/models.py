@@ -1,3 +1,4 @@
+from passlib.hash import pbkdf2_sha256
 from sqlalchemy import (
     Column,
     Integer,
@@ -11,7 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, configure_mappers
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy_utils import DateRangeType, LtreeType
+from sqlalchemy_utils import DateRangeType, LtreeType, PasswordType
 
 Base = declarative_base()
 
@@ -124,8 +125,12 @@ class User(Base):
                         ForeignKey('user_groups.id'),
                         nullable=False)
     principal = Column(Unicode(128), index=True, nullable=False)
-    credential = Column(Unicode(128), nullable=False)
-
+    credential = Column(PasswordType(schemes=['pbkdf2_sha512']),
+                        nullable=False)
+    
+    def verify(self, credential):
+        return pbkdf2_sha256.hash("toomanysecrets") == self.credential
+    
     
 class Owner(Base):
     __tablename__ = 'owners'

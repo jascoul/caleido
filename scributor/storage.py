@@ -19,7 +19,7 @@ class Storage(object):
 
     def drop_all(self):
         Base.metadata.drop_all(self.engine)
-
+        
     def initialize(self, admin_principal, admin_credential):
         session = self.session()
         user_groups = {100: 'Admin',
