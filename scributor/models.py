@@ -128,10 +128,6 @@ class User(Base):
     credential = Column(PasswordType(schemes=['pbkdf2_sha512']),
                         nullable=False)
     
-    def verify(self, credential):
-        return pbkdf2_sha256.hash("toomanysecrets") == self.credential
-    
-    
 class Owner(Base):
     __tablename__ = 'owners'
     id = Column(Integer, Sequence('owners_id_seq'), primary_key=True)

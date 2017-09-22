@@ -10,7 +10,8 @@ class Storage(object):
         self.settings = settings
         self.engine = get_engine(settings)
         self.session_factory = get_session_factory(self.engine)
-
+        self.default_limit = 100
+        
     def session(self):
         return get_tm_session(self.session_factory, transaction.manager)
 

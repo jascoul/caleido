@@ -3,24 +3,9 @@ from cornice import Service
 from cornice.service import get_services
 from cornice.validators import colander_body_validator
 from pyramid.view import view_config
+
 from cornice_swagger import CorniceSwagger
-
-
-user_api = Service(name='user_api',
-                   path='/api/v1/users/{id}',
-                   description='Users Service')
-
-class UsersAPI(object):
-    "Users Service"
-
-    @user_api.get(tags=['auth'])
-    def get_value(request):
-        """Returns the value."""
-        key = request.matchdict['key']
-        return _VALUES.get(key)
-    
-    
-
+                
 _VALUES = {}
 
 
@@ -76,10 +61,11 @@ swagger = Service(name='OpenAPI',
 @swagger.get()
 def openAPI_v1_spec(request):
     doc = CorniceSwagger(get_services())
-    my_spec = doc.generate('MyAPI', '1.0.0')
+    my_spec = doc.generate('Scributor API', '1.0.0')
     return my_spec
 
-@view_config(route_name='swagger_ui', renderer='templates/swagger.pt')
+@view_config(route_name='swagger_ui',
+             renderer='scributor:templates/swagger.pt')
 def swagger_ui_view(request):
     return {'swagger_api_url': request.route_url('OpenAPI')}
 

@@ -16,7 +16,12 @@ class UserTest(BaseTest):
         # but can be compared to plain text passwords
         assert admin.credential == 'admin'
         assert admin.credential.hash.startswith(b'$pbkdf2-sha512')
+
             
+    def test_listing_users(self):
+        self.api.get('/api/v1/users/1', status=200)
+        self.api.get('/api/v1/users/2', status=404)
+
         
     def test_home(self):
         out = self.api.get('/')
