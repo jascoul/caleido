@@ -30,12 +30,13 @@ class Storage(object):
                        10: 'Viewer'}
         for id, label in user_groups.items():
             session.add(UserGroup(id=id, label=label))
-        transaction.commit()
+        session.flush()
         session.add(User(principal=admin_principal,
                          credential=admin_credential,
                          user_group=100))
-        transaction.commit()
+        session.flush()
 
+        
 def get_engine(settings, prefix='sqlalchemy.'):
     return engine_from_config(settings, prefix)
 

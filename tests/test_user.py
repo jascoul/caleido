@@ -22,6 +22,14 @@ class UserTest(BaseTest):
         self.api.get('/api/v1/users/1', status=200)
         self.api.get('/api/v1/users/2', status=404)
 
+    def test_add_user(self):
+        out = self.api.post_json('/api/v1/users',
+                                 {'principal': 'john',
+                                  'credential': 'j0hn',
+                                  'user_group': 10})
+        assert out.status_code == 201
+        assert out.json['principal'] == 'john'
+        assert out.json['credential'].startswith('$pbkdf2-sha512')
         
     def test_home(self):
         out = self.api.get('/')

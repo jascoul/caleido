@@ -3,7 +3,7 @@ import unittest
 import transaction
 from pyramid import testing
 from webtest import TestApp as WebTestApp
-
+import transaction
 from scributor import main
 
 class BaseTest(unittest.TestCase):
@@ -18,13 +18,13 @@ class BaseTest(unittest.TestCase):
         self.app = main({}, **self.app_settings())
         self.storage = self.app.registry['storage']
         self.api = WebTestApp(self.app)
-    
+        self.storage.drop_all()
         self.storage.create_all()
-        self.storage.initialize('admin', 'admin')
+        with transaction.manager:
+            self.storage.initialize('admin', 'admin')
         
     def tearDown(self):
         testing.tearDown()
         transaction.abort()
-        self.storage.drop_all()
 
         

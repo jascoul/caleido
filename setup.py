@@ -39,5 +39,8 @@ setup(name='scributor',
       entry_points="""\
       [paste.app_factory]
       main=scributor:main
+      [console_scripts]
+      initialize_db = scributor.tools:initialize_db
+      drop_db = scributor.tools:drop_db
       """,
       paster_plugins=['pyramid'])
