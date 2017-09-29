@@ -1,7 +1,6 @@
 import colander
 from cornice import Service
 from cornice.service import get_services
-from cornice.validators import colander_body_validator
 from pyramid.view import view_config
 
 from cornice_swagger import CorniceSwagger

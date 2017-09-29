@@ -1,3 +1,4 @@
+from pyramid.decorator import reify
 from sqlalchemy import engine_from_config
 from sqlalchemy.orm import sessionmaker
 import zope.sqlalchemy
@@ -11,30 +12,32 @@ class Storage(object):
         self.engine = get_engine(settings)
         self.session_factory = get_session_factory(self.engine)
         self.default_limit = 100
-        
-    def session(self):
-        return get_tm_session(self.session_factory, transaction.manager)
 
+    @reify
+    def session(self):
+        with transaction.manager:
+            session = get_tm_session(self.session_factory, transaction.manager)
+        return session
+    
     def create_all(self):
         Base.metadata.create_all(self.engine)
 
     def drop_all(self):
         Base.metadata.drop_all(self.engine)
         
-    def initialize(self, admin_principal, admin_credential):
-        session = self.session()
+    def initialize(self, admin_userid, admin_credentials):
         user_groups = {100: 'Admin',
                        80: 'Manager',
                        60: 'Editor',
                        40: 'Owner',
                        10: 'Viewer'}
         for id, label in user_groups.items():
-            session.add(UserGroup(id=id, label=label))
-        session.flush()
-        session.add(User(principal=admin_principal,
-                         credential=admin_credential,
+            self.session.add(UserGroup(id=id, label=label))
+        self.session.flush()
+        self.session.add(User(userid=admin_userid,
+                         credentials=admin_credentials,
                          user_group=100))
-        session.flush()
+        self.session.flush()
 
         
 def get_engine(settings, prefix='sqlalchemy.'):
@@ -95,4 +98,5 @@ def includeme(config):
     config.registry['storage'] = storage
     
     # make request.storage available for use in Pyramid
-    config.add_request_method(lambda r: storage, 'storage', reify=True)
+    config.add_request_method(
+        lambda r: Storage(settings), 'storage', reify=True)

@@ -1,4 +1,3 @@
-from passlib.hash import pbkdf2_sha256
 from sqlalchemy import (
     Column,
     Integer,
@@ -124,9 +123,9 @@ class User(Base):
     user_group = Column(Integer(),
                         ForeignKey('user_groups.id'),
                         nullable=False)
-    principal = Column(Unicode(128), index=True, nullable=False)
-    credential = Column(PasswordType(schemes=['pbkdf2_sha512']),
-                        nullable=False)
+    userid = Column(Unicode(128), index=True, nullable=False)
+    credentials = Column(PasswordType(schemes=['pbkdf2_sha512']),
+                         nullable=False)
     
 class Owner(Base):
     __tablename__ = 'owners'
@@ -135,7 +134,7 @@ class Owner(Base):
                       ForeignKey('actors.id'),
                       index=True,
                       nullable=False)
-    principal = Column(Unicode(128), index=True, nullable=False)
+    userid = Column(Unicode(128), index=True, nullable=False)
 
     
 class Group(Base):

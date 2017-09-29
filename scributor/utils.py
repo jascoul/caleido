@@ -15,3 +15,8 @@ class ErrorSchema(colander.MappingSchema):
 class ErrorBodySchema(colander.MappingSchema):
     body = ErrorSchema()
     
+class StatusSchema(colander.MappingSchema):
+    status = colander.SchemaNode(colander.String())
+
+class StatusBodySchema(colander.MappingSchema):
+    status = StatusSchema()
