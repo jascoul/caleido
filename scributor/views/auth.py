@@ -1,20 +1,26 @@
 import json
 
+import jwt
 import colander
 from pyramid.view import forbidden_view_config
-from pyramid.httpexceptions import HTTPUnauthorized
+from pyramid.httpexceptions import HTTPForbidden
+from pyramid.interfaces import IAuthenticationPolicy
+
 from cornice import Service
 from cornice.validators import colander_body_validator
 
 from scributor.security import authenticator_factory
-from scributor.utils import ErrorBodySchema
+from scributor.utils import ErrorResponseSchema, OKStatus
 
 class AuthLoginSchema(colander.MappingSchema):
     user = colander.SchemaNode(colander.String())
     password = colander.SchemaNode(colander.String())
 
+class AuthRenewSchema(colander.MappingSchema):
+    token = colander.SchemaNode(colander.String())
+
 class AuthLoggedInSchema(colander.MappingSchema):
-    status = colander.SchemaNode(colander.String())
+    status = OKStatus
     token = colander.SchemaNode(colander.String())
 
 class AuthLoggedInBodySchema(colander.MappingSchema):
@@ -27,32 +33,60 @@ login = Service(name='login',
                 factory=authenticator_factory,
                 response_schemas={
         '20O': AuthLoggedInBodySchema(description='Ok'),
-        '400': ErrorBodySchema(description='Bad Request'),
-        '401': ErrorBodySchema(description='Unauthorized')})
-@login.post()
+        '400': ErrorResponseSchema(description='Bad Request'),
+        '401': ErrorResponseSchema(description='Unauthorized')})
+@login.post(tags=['auth'])
 def login_view(request):
-    body = json.loads(request.body.decode('utf8'))
-    user_id = body['user']
-    credentials = body['password']
-    principals = request.context.principals(user_id, credentials)
-    if principals is None:
-        raise HTTPUnauthorized('Unauthorized')
+    user_id = request.validated['user']
+    credentials = request.validated['password']
+    if not request.context.valid_user(user_id, credentials):
+        raise HTTPForbidden('Unauthorized')
+    principals = request.context.principals(user_id)
     result = {'status': 'ok',
               'token': request.create_jwt_token(user_id, principals=principals)}
     
     return result
 
+renew = Service(name='renew',
+                path='/api/v1/auth/renew',
+                schema=AuthRenewSchema(),
+                validators=(colander_body_validator,),
+                factory=authenticator_factory,
+                response_schemas={
+    '20O': AuthLoggedInBodySchema(description='Ok'),
+    '400': ErrorResponseSchema(description='Bad Request'),
+    '401': ErrorResponseSchema(description='Unauthorized')})
+@renew.post(tags=['auth'])
+def renew_view(request):
+    token = request.validated['token']
+    policy = request.registry.queryUtility(IAuthenticationPolicy)
+    try:
+        claims = jwt.decode(token, policy.private_key)
+    except jwt.InvalidTokenError as e:
+        raise HTTPForbidden('Invalid JWT token: %s' % e)
+
+    user_id = claims['sub']
+    if not request.context.existing_user(user_id):
+        raise HTTPForbidden('Invalid JWT token: unknown user')
+    
+    principals = request.context.principals(user_id)
+    result = {'status': 'ok',
+              'token': request.create_jwt_token(user_id, principals=principals)}
+    return result
 
 @forbidden_view_config()
 def forbidden_view(request):
     response = request.response
-    if request.authenticated_userid:
+    description = None
+    if request.exception and request.exception.detail:
+        description = request.exception.detail
+    if request.authenticated_userid or request.headers.get('Authorization'):
         response.status = 403
         response.content_type = 'application/json'
         response.write(
             json.dumps({'status': 'error',
                         'errors': [{'name': 'forbidden',
-                                    'description': 'Forbidden',
+                                    'description': description or 'Forbidden',
                                     'location': 'request'}]}).encode('utf8'))
     else:
         response.status = 401
@@ -61,6 +95,6 @@ def forbidden_view(request):
         response.write(
             json.dumps({'status': 'error',
                         'errors': [{'name': 'unauthorized',
-                                    'description': 'Unauthorized',
+                                    'description': description or 'Unauthorized',
                                     'location': 'request'}]}).encode('utf8'))
     return response

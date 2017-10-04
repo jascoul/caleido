@@ -15,6 +15,8 @@ def main(global_config, **settings):
     config.set_authorization_policy(ACLAuthorizationPolicy())
     config.set_jwt_authentication_policy(settings['scributor.secret'],
                                          http_header='Authorization',
+                                         auth_type='Bearer',
+                                         expiration=3600,
                                          callback=add_role_principals)
     
     config.add_route('swagger_ui', '/api/swagger.html')

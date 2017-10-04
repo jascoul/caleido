@@ -7,48 +7,37 @@ import transaction
 from scributor.models import Base, User, UserGroup
 
 class Storage(object):
-    def __init__(self, settings):
-        self.settings = settings
-        self.engine = get_engine(settings)
-        self.session_factory = get_session_factory(self.engine)
-        self.default_limit = 100
-
-    @reify
-    def session(self):
-        with transaction.manager:
-            session = get_tm_session(self.session_factory, transaction.manager)
-        return session
-    
+    def __init__(self, registry):
+        self.registry = registry
+        
     def create_all(self):
-        Base.metadata.create_all(self.engine)
+        Base.metadata.create_all(self.registry['engine'])
 
     def drop_all(self):
-        Base.metadata.drop_all(self.engine)
-        
+        Base.metadata.drop_all(self.registry['engine'])
+
+    def make_session(self, transaction_manager=None):
+        return get_tm_session(
+            self.registry['dbsession_factory'],
+            transaction_manager or transaction.manager)
+    
     def initialize(self, admin_userid, admin_credentials):
-        user_groups = {100: 'Admin',
-                       80: 'Manager',
-                       60: 'Editor',
-                       40: 'Owner',
-                       10: 'Viewer'}
-        for id, label in user_groups.items():
-            self.session.add(UserGroup(id=id, label=label))
-        self.session.flush()
-        self.session.add(User(userid=admin_userid,
-                         credentials=admin_credentials,
-                         user_group=100))
-        self.session.flush()
+        with transaction.manager:
+            session = self.make_session()
+            user_groups = {100: 'Admin',
+                           80: 'Manager',
+                           60: 'Editor',
+                           40: 'Owner',
+                           10: 'Viewer'}
+            for id, label in user_groups.items():
+                session.add(UserGroup(id=id, label=label))
+            session.flush()
+            session.add(User(userid=admin_userid,
+                             credentials=admin_credentials,
+                             user_group=100))
+            session.flush()
 
         
-def get_engine(settings, prefix='sqlalchemy.'):
-    return engine_from_config(settings, prefix)
-
-
-def get_session_factory(engine):
-    factory = sessionmaker()
-    factory.configure(bind=engine)
-    return factory
-
 
 def get_tm_session(session_factory, transaction_manager):
     """
@@ -72,6 +61,7 @@ def get_tm_session(session_factory, transaction_manager):
 
     """
     dbsession = session_factory()
+
     zope.sqlalchemy.register(
         dbsession, transaction_manager=transaction_manager)
     return dbsession
@@ -85,6 +75,7 @@ def includeme(config):
 
     """
     settings = config.get_settings()
+    
     settings['tm.manager_hook'] = 'pyramid_tm.explicit_manager'
 
     # use pyramid_tm to hook the transaction lifecycle to the request
@@ -93,10 +84,23 @@ def includeme(config):
     # use pyramid_retry to retry a request when transient exceptions occur
     config.include('pyramid_retry')
 
-    storage = Storage(settings)
+    engine = engine_from_config(settings, prefix='sqlalchemy.')
 
-    config.registry['storage'] = storage
-    
-    # make request.storage available for use in Pyramid
+    session_factory = sessionmaker()
+    session_factory.configure(bind=engine)
+
+    config.registry['engine'] = engine
+    config.registry['dbsession_factory'] = session_factory
+
+    def new_dbsession(request):
+        return get_tm_session(session_factory, request.tm)
+    config.add_request_method(new_dbsession, 'new_dbsession')
+    # make request.dbsession available for use in Pyramid
     config.add_request_method(
-        lambda r: Storage(settings), 'storage', reify=True)
+        # r.tm is the transaction manager used by pyramid_tm
+        lambda r: new_dbsession(r),
+        'dbsession',
+        reify=True
+        )
+
+    config.registry['storage'] = Storage(config.registry)

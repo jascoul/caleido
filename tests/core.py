@@ -5,6 +5,7 @@ from pyramid import testing
 from webtest import TestApp as WebTestApp
 import transaction
 from scributor import main
+from scributor.storage import Storage
 
 class BaseTest(unittest.TestCase):
     
@@ -19,12 +20,13 @@ class BaseTest(unittest.TestCase):
         self.app = main({}, **self.app_settings())
         self.storage = self.app.registry['storage']
         self.api = WebTestApp(self.app)
-        self.storage.drop_all()
-        self.storage.create_all()
-        with transaction.manager:
-            self.storage.initialize('admin', 'admin')
+        storage = Storage(self.app.registry)
+        storage.drop_all()
+        storage.create_all()
+        storage.initialize('admin', 'admin')
 
-        self.admin_token = 'JWT %s' % self.api.post_json(
+    def admin_token(self):
+        return self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'admin', 'password': 'admin'}).json['token']
         

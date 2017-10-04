@@ -1,22 +1,33 @@
 import colander
 
-class ErrorMessageSchema(colander.MappingSchema):
-    name = colander.SchemaNode(colander.String())
-    description = colander.SchemaNode(colander.String())
-    location = colander.SchemaNode(colander.String())
-    
-class ErrorListSchema(colander.SequenceSchema):
-    error = ErrorMessageSchema()
+OKStatus = colander.SchemaNode(colander.String(),
+                               validator=colander.OneOf(['ok']))
+ErrorStatus = colander.SchemaNode(colander.String(),
+                                  validator=colander.OneOf(['error']))
 
-class ErrorSchema(colander.MappingSchema):
-    errors = ErrorListSchema()
-    status = colander.SchemaNode(colander.String())
-    
-class ErrorBodySchema(colander.MappingSchema):
-    body = ErrorSchema()
-    
-class StatusSchema(colander.MappingSchema):
-    status = colander.SchemaNode(colander.String())
+class ErrorResponseSchema(colander.MappingSchema):
+    @colander.instantiate()
+    class body(colander.MappingSchema):
+        @colander.instantiate()
+        class errors(colander.SequenceSchema):
+            @colander.instantiate()
+            class error(colander.MappingSchema):
+                name = colander.SchemaNode(colander.String())
+                description = colander.SchemaNode(colander.String())
+                location = colander.SchemaNode(colander.String())
+        status = ErrorStatus
 
-class StatusBodySchema(colander.MappingSchema):
-    status = StatusSchema()
+    
+class StatusResponseSchema(colander.MappingSchema):
+    @colander.instantiate()
+    class body(colander.MappingSchema):
+        status = ErrorStatus
+
+
+class PagingInfoSchema(colander.MappingSchema):
+    total = colander.SchemaNode(colander.Int())
+    size = colander.SchemaNode(colander.Int())
+    current = colander.SchemaNode(colander.Int())
+    previous = colander.SchemaNode(colander.Int())
+    next = colander.SchemaNode(colander.Int())
+
