@@ -4,7 +4,17 @@ from sqlalchemy.orm import sessionmaker
 import zope.sqlalchemy
 import transaction
 
-from scributor.models import Base, User, UserGroup
+from scributor.models import Base, User, UserGroup, ActorType
+
+DEFAULTS = {
+    'user_groups': {100: 'Admin',
+                    80: 'Manager',
+                    60: 'Editor',
+                    40: 'Owner',
+                    10: 'Viewer'},
+    'actor_types': {'individual': 'Individual',
+                    'organisation': 'Organisation'}
+    }
 
 class Storage(object):
     def __init__(self, registry):
@@ -24,11 +34,7 @@ class Storage(object):
     def initialize(self, admin_userid, admin_credentials):
         with transaction.manager:
             session = self.make_session()
-            user_groups = {100: 'Admin',
-                           80: 'Manager',
-                           60: 'Editor',
-                           40: 'Owner',
-                           10: 'Viewer'}
+            user_groups = DEFAULTS['user_groups']
             for id, label in user_groups.items():
                 session.add(UserGroup(id=id, label=label))
             session.flush()
@@ -36,7 +42,10 @@ class Storage(object):
                              credentials=admin_credentials,
                              user_group=100))
             session.flush()
-
+            actor_types = DEFAULTS['actor_types']
+            for key, label in actor_types.items():
+                session.add(ActorType(key=key, label=label))
+            session.flush()
         
 
 def get_tm_session(session_factory, transaction_manager):

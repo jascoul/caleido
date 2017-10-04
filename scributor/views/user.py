@@ -2,7 +2,6 @@ import colander
 from cornice.resource import resource, view
 from cornice.validators import colander_body_validator, colander_validator
 from pyramid.httpexceptions import HTTPNotFound
-import transaction
 
 from scributor.models import User
 from scributor.resources import UserResource

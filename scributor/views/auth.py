@@ -2,7 +2,7 @@ import json
 
 import jwt
 import colander
-from pyramid.view import forbidden_view_config
+from pyramid.view import forbidden_view_config, notfound_view_config
 from pyramid.httpexceptions import HTTPForbidden
 from pyramid.interfaces import IAuthenticationPolicy
 
@@ -98,3 +98,19 @@ def forbidden_view(request):
                                     'description': description or 'Unauthorized',
                                     'location': 'request'}]}).encode('utf8'))
     return response
+
+@notfound_view_config()
+def notfound_view(request):
+    description = None
+    if request.exception and request.exception.detail:
+        description = request.exception.detail
+    response = request.response
+    response.status = 404
+    response.content_type = 'application/json'
+    response.write(
+        json.dumps({'status': 'error',
+                    'errors': [{'name': 'not found',
+                                'description': description or 'Not Found',
+                                'location': 'request'}]}).encode('utf8'))
+    return response
+    

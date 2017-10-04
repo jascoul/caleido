@@ -3,7 +3,7 @@ import math
 from pyramid.security import Allow
 from sqlalchemy_utils.functions import get_primary_keys
 import transaction
-from scributor.models import User
+from scributor.models import User, ActorType
 
 class Resource(object):
     orm = None
@@ -74,7 +74,6 @@ class Resource(object):
         
 class UserResource(Resource):
     orm = User
-
         
     def __acl__(self):
         yield (Allow, 'group:admin', 'view')
@@ -88,14 +87,60 @@ class UserResource(Resource):
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
 
+
     def acl_filter(self, query, userid, principals):
         if not 'group:admin' in principals:
             # only show current user
             query = query.filter(User.userid == userid)
         return query
+
         
     def to_dict(self):
         return {'id': self.model.id,
                 'user_group': self.model.user_group,
                 'userid': self.model.userid,
                 'credentials': self.model.credentials.hash.decode('utf8')}
+
+    
+class TypeResource(object):
+    schemes = {'actor': ActorType}
+    orm = None
+
+    def __acl__(self):
+        yield (Allow, 'system.Authenticated', 'view')
+        yield (Allow, 'group:admin', 'edit')
+
+    
+    def __init__(self, session, scheme_id):
+        self.session = session
+        self.scheme_id = scheme_id
+        if scheme_id is not None:
+            self.orm = self.schemes[scheme_id]
+        self.model = None
+
+    def from_dict(self, data):
+        values = dict((v['key'], v['label']) for v in data['values'])
+        for item in self.session.query(self.orm).all():
+            if item.key not in values:
+                self.session.delete(item)
+            else:
+                if values[item.key] != item.label:
+                    item.label = values[item.key]
+                    self.session.add(item)
+                del values[item.key]
+        for key, label in values.items():
+            self.session.add(self.orm(key=key, label=label))
+        self.session.flush()
+        
+    def to_dict(self):
+        values = []
+        for setting in self.session.query(self.orm).all():
+            values.append({'key': setting.key, 'label': setting.label})
+        return {'id': self.scheme_id, 'values': values}
+
+    def list(self):
+        listing = []
+        for scheme_id in self.schemes.keys():
+            res = TypeResource(self.session, scheme_id)
+            listing.append(res.to_dict())
+        return {'types': listing}
