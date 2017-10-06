@@ -3,15 +3,15 @@ import unittest
 import transaction
 from pyramid import testing
 from webtest import TestApp as WebTestApp
-import transaction
-from scributor import main
-from scributor.storage import Storage
+
+from caleido import main
+from caleido.storage import Storage
 
 class BaseTest(unittest.TestCase):
     
     def app_settings(self):
         return {
-            'scributor.secret': 'sekret',
+            'caleido.secret': 'sekret',
             'sqlalchemy.url': (
                 'postgresql://scributor:scr1but0r@localhost/scributor')
         }

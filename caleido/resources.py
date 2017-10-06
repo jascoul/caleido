@@ -3,7 +3,7 @@ import math
 from pyramid.security import Allow
 from sqlalchemy_utils.functions import get_primary_keys
 import transaction
-from scributor.models import User, ActorType
+from caleido.models import User, ActorType
 
 class Resource(object):
     orm = None

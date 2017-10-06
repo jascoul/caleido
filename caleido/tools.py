@@ -2,7 +2,7 @@ import sys
 import os
 
 from pyramid.paster import get_appsettings
-from scributor import main
+from caleido import main
 import transaction
  
 def initialize_db():

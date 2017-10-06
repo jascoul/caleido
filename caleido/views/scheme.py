@@ -3,8 +3,8 @@ from cornice.resource import resource, view
 from cornice.validators import colander_body_validator, colander_validator
 from pyramid.httpexceptions import HTTPNotFound
 
-from scributor.utils import ErrorResponseSchema
-from scributor.resources import TypeResource
+from caleido.utils import ErrorResponseSchema
+from caleido.resources import TypeResource
 
 def type_factory(request):
     if not 'id' in request.matchdict:

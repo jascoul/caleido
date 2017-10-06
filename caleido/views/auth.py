@@ -9,8 +9,8 @@ from pyramid.interfaces import IAuthenticationPolicy
 from cornice import Service
 from cornice.validators import colander_body_validator
 
-from scributor.security import authenticator_factory
-from scributor.utils import ErrorResponseSchema, OKStatus
+from caleido.security import authenticator_factory
+from caleido.utils import ErrorResponseSchema, OKStatus
 
 class AuthLoginSchema(colander.MappingSchema):
     user = colander.SchemaNode(colander.String())

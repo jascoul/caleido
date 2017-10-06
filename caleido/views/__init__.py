@@ -26,7 +26,7 @@ def openAPI_v1_spec(request):
                 'name': 'Authorization'}}
         }#
         #'security': [{'jwt': []}]}
-    my_spec = doc.generate('Scributor API',
+    my_spec = doc.generate('Caleido API',
                            '1.0.0',
                            swagger=extra_fields)
     return my_spec

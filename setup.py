@@ -7,9 +7,9 @@ with open(os.path.join(here, 'README.rst')) as f:
     README = f.read()
 
 
-setup(name='scributor',
+setup(name='caleido',
       version=0.1,
-      description='Scributor',
+      description='Caleido',
       long_description=README,
       classifiers=[
           "Programming Language :: Python",
@@ -39,9 +39,9 @@ setup(name='scributor',
                         'intervals'],
       entry_points="""\
       [paste.app_factory]
-      main=scributor:main
+      main=caleido:main
       [console_scripts]
-      initialize_db = scributor.tools:initialize_db
-      drop_db = scributor.tools:drop_db
+      initialize_db = caleido.tools:initialize_db
+      drop_db = caleido.tools:drop_db
       """,
       paster_plugins=['pyramid'])

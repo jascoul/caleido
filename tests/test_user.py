@@ -2,7 +2,7 @@ import time
 
 import jwt
 import transaction
-from scributor.models import User
+from caleido.models import User
 from core import BaseTest
         
 class UserAuthTest(BaseTest):
@@ -47,7 +47,7 @@ class UserAuthTest(BaseTest):
         decoded_token['exp'] = 0
         # encode the token again
         token = jwt.encode(decoded_token,
-                           self.app_settings()['scributor.secret'],
+                           self.app_settings()['caleido.secret'],
                            algorithm='HS512').decode('utf8')
         # now let's try to retrieve the admin user, it should result in 403
         self.api.get('/api/v1/users/1',

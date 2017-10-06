@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 import zope.sqlalchemy
 import transaction
 
-from scributor.models import Base, User, UserGroup, ActorType
+from caleido.models import Base, User, UserGroup, ActorType
 
 DEFAULTS = {
     'user_groups': {100: 'Admin',
@@ -80,7 +80,7 @@ def includeme(config):
     """
     Initialize the model for a Pyramid app.
 
-    Activate this setup using ``config.include('scributor.models')``.
+    Activate this setup using ``config.include('caleido.models')``.
 
     """
     settings = config.get_settings()

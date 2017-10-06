@@ -3,10 +3,10 @@ from cornice.resource import resource, view
 from cornice.validators import colander_body_validator, colander_validator
 from pyramid.httpexceptions import HTTPNotFound
 
-from scributor.models import User
-from scributor.resources import UserResource
+from caleido.models import User
+from caleido.resources import UserResource
 
-from scributor.utils import (ErrorResponseSchema,
+from caleido.utils import (ErrorResponseSchema,
                              StatusResponseSchema,
                              PagingInfoSchema,
                              OKStatus)

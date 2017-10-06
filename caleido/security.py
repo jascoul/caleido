@@ -1,6 +1,4 @@
-import json
-
-from scributor.models import User
+from caleido.models import User
 
 def add_role_principals(userid, request):
     return request.jwt_claims.get('principals') or []
