@@ -1,4 +1,3 @@
-import colander
 from operator import attrgetter
 
 from cornice import Service
@@ -15,21 +14,23 @@ swagger = Service(name='OpenAPI',
 @swagger.get()
 def openAPI_v1_spec(request):
     services = get_services()
-    services.sort(key=attrgetter('path'))    
+    services.sort(key=attrgetter('path'))
     doc = CorniceSwagger(services)
     extra_fields = {
         'securityDefinitions': {
         'jwt': {'type': 'apiKey',
-                'description': ('Enter a valid token as returned by the /auth/login endpoint.\n\n'
-                                'Note: The token should be prefixed with "Bearer "'),
+                'description': (
+                     'Enter a valid token as returned by the '
+                     '/auth/login endpoint.\n\n'
+                     'Note: The token should be prefixed with "Bearer "'),
                 'in': 'header',
                 'name': 'Authorization'}}
-        }#
-        #'security': [{'jwt': []}]}
+        }
     my_spec = doc.generate('Caleido API',
                            '1.0.0',
                            swagger=extra_fields)
     return my_spec
+
 
 @view_config(route_name='swagger_ui',
              renderer='caleido:templates/swagger.pt')
