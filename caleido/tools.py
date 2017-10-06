@@ -4,7 +4,7 @@ import os
 from pyramid.paster import get_appsettings
 from caleido import main
 import transaction
- 
+
 def initialize_db():
     if not len(sys.argv) == 2:
         cmd = os.path.basename(sys.argv[0])
@@ -14,10 +14,18 @@ def initialize_db():
     settings = get_appsettings(sys.argv[1])
     app = main({}, **settings)
     storage = app.registry['storage']
-    storage.create_all()
-    with transaction.manager:
-        storage.initialize('admin', 'admin')
-    
+    session = storage.make_session()
+    storage.create_all(session)
+    print('Creating "unittest" repository on "unittest.localhost"')
+    storage.create_repository(session, 'unittest', 'unittest.localhost')
+    print('Creating "test" repository on "localhost"')
+    storage.create_repository(session, 'test', 'localhost')
+    print('- Adding user "admin" with password "admin"')
+    storage.initialize_repository(session, 'test', 'admin', 'admin')
+    transaction.commit()
+    #with transaction.manager:
+    #    storage.initialize('admin', 'admin')
+
 def drop_db():
     if not len(sys.argv) == 2:
         cmd = os.path.basename(sys.argv[0])
@@ -27,6 +35,7 @@ def drop_db():
     settings = get_appsettings(sys.argv[1])
     app = main({}, **settings)
     storage = app.registry['storage']
-    storage.drop_all()
-    
-    
+    session = storage.make_session()
+    storage.drop_all(session)
+    transaction.commit()
+

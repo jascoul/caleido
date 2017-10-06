@@ -4,12 +4,12 @@ import jwt
 import transaction
 from caleido.models import User
 from core import BaseTest
-        
+
 class UserAuthTest(BaseTest):
 
     def test_initial_admin_user_has_been_created(self):
         # the base unittest sets up an initial admin user
-        session = self.storage.make_session()
+        session = self.storage.make_session(namespace='unittest')
         users = session.query(User).all()
         assert len(users) == 1
         admin = users[0]
@@ -69,7 +69,7 @@ class UserAuthTest(BaseTest):
         # now we should be able to retrieve the user
         out = self.api.get('/api/v1/users/1',
                            headers={'Authorization': 'Bearer %s' % token})
-        
+
     def test_retreiving_user_info(self):
         # we must be logged in as an admin user to retrieve users
         out = self.api.get('/api/v1/users/1', status=401)
@@ -83,13 +83,13 @@ class UserAuthTest(BaseTest):
                            headers={'Authorization': 'Bearer %s' % token})
         assert out.json['userid'] == 'admin'
         assert out.json['credentials'].startswith('$pbkdf2-sha512')
-        
+
     def test_adding_users(self):
         # admin users can add users
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'admin', 'password': 'admin'}).json['token']
-        
+
         out = self.api.post_json('/api/v1/users',
                                  {'userid': 'john',
                                   'credentials': 'j0hn',
@@ -109,7 +109,7 @@ class UserAuthTest(BaseTest):
                             'user_group': 10},
                            headers={'Authorization': 'Bearer %s' % token},
                            status=403)
-        
+
     def test_remove_user(self):
         # first add a user
         headers = dict(Authorization='Bearer %s' % self.admin_token())
@@ -126,11 +126,11 @@ class UserAuthTest(BaseTest):
         self.api.get('/api/v1/users/%s' % john_id,
                      headers=headers,
                      status=404)
-        
+
     def test_listing_users(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         # add a dozen users
-        session = self.storage.make_session()
+        session = self.storage.make_session(namespace='unittest')
         for i in range(12):
             session.add(User(userid='user_%s' % i,
                              credentials='user_%s' % i,
@@ -157,6 +157,6 @@ class UserAuthTest(BaseTest):
                            headers={'Authorization': 'Bearer %s' % token})
         assert len(out.json['result']) == 1
         assert out.json['result'][0]['userid'] == 'user_4'
-        
-                           
-        
+
+
+

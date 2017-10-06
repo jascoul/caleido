@@ -1,10 +1,11 @@
 from pyramid.decorator import reify
 from sqlalchemy import engine_from_config
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import CreateSchema, DropSchema
 import zope.sqlalchemy
 import transaction
 
-from caleido.models import Base, User, UserGroup, ActorType
+from caleido.models import Base, Repository, User, UserGroup, ActorType
 
 DEFAULTS = {
     'user_groups': {100: 'Admin',
@@ -17,36 +18,79 @@ DEFAULTS = {
     }
 
 class Storage(object):
+    schema_version = '0.1'
     def __init__(self, registry):
         self.registry = registry
-        
-    def create_all(self):
-        Base.metadata.create_all(self.registry['engine'])
 
-    def drop_all(self):
-        Base.metadata.drop_all(self.registry['engine'])
+    def repository_info(self, session):
+        revisions = {}
+        for repository in session.query(Repository).all():
+            revisions[repository.namespace] = repository.to_dict()
+        return revisions
 
-    def make_session(self, transaction_manager=None):
-        return get_tm_session(
+    def create_repository(self, session, namespace, vhost_name):
+        self.registry['engine'].execute(CreateSchema(namespace))
+        session.add(Repository(namespace=namespace,
+                               schema_version=self.schema_version,
+                               vhost_name=vhost_name))
+        session.flush()
+        session.execute('SET search_path TO %s, public' % namespace);
+        Base.metadata.create_all(bind=session.connection())
+        session.execute('SET search_path TO public');
+        session.flush()
+        return
+        # temporarily set the schema attribute on the tables
+        # to the correct namespace, afterwards reset
+        for table in Base.metadata.tables.values():
+            table.schema = namespace
+        Base.metadata.create_all(bind=session.connection())
+        for table in Base.metadata.tables.values():
+            table.schema = None
+        session.flush()
+
+    def drop_repository(self, session, namespace):
+        self.registry['engine'].execute(DropSchema(namespace, cascade=True))
+        repo = session.query(Repository).filter(
+            Repository.namespace == namespace).first()
+        if repo:
+            session.delete(repo)
+        session.flush()
+
+    def create_all(self, session):
+        session.execute('SET search_path TO public');
+        Repository.__table__.create(bind=session.connection())
+        session.flush()
+
+    def drop_all(self, session):
+        for repository in session.query(Repository).all():
+            self.drop_repository(session, repository.namespace)
+        Repository.__table__.drop(bind=session.connection())
+
+    def make_session(self, namespace=None, transaction_manager=None):
+        session = get_tm_session(
             self.registry['dbsession_factory'],
             transaction_manager or transaction.manager)
-    
-    def initialize(self, admin_userid, admin_credentials):
-        with transaction.manager:
-            session = self.make_session()
-            user_groups = DEFAULTS['user_groups']
-            for id, label in user_groups.items():
-                session.add(UserGroup(id=id, label=label))
-            session.flush()
-            session.add(User(userid=admin_userid,
-                             credentials=admin_credentials,
-                             user_group=100))
-            session.flush()
-            actor_types = DEFAULTS['actor_types']
-            for key, label in actor_types.items():
-                session.add(ActorType(key=key, label=label))
-            session.flush()
-        
+        if namespace:
+            session.execute('SET search_path TO %s, public' % namespace);
+        return session
+
+    def initialize_repository(self, session, namespace, admin_userid, admin_credentials):
+        session.execute('SET search_path TO %s, public' % namespace);
+        user_groups = DEFAULTS['user_groups']
+        for id, label in user_groups.items():
+            session.add(UserGroup(id=id, label=label))
+        session.flush()
+        session.add(User(userid=admin_userid,
+                         credentials=admin_credentials,
+                         user_group=100))
+        session.flush()
+        actor_types = DEFAULTS['actor_types']
+        for key, label in actor_types.items():
+            session.add(ActorType(key=key, label=label))
+        session.flush()
+        session.execute('SET search_path TO public');
+        session.flush()
+
 
 def get_tm_session(session_factory, transaction_manager):
     """
@@ -84,7 +128,7 @@ def includeme(config):
 
     """
     settings = config.get_settings()
-    
+
     settings['tm.manager_hook'] = 'pyramid_tm.explicit_manager'
 
     # use pyramid_tm to hook the transaction lifecycle to the request
@@ -102,12 +146,18 @@ def includeme(config):
     config.registry['dbsession_factory'] = session_factory
 
     def new_dbsession(request):
-        return get_tm_session(session_factory, request.tm)
+        session = get_tm_session(session_factory, request.tm)
+        host = request.headers['Host'].split(':')[0]
+        repository = session.query(Repository).filter(Repository.vhost_name == host).first()
+        if repository:
+            session.execute(
+                'SET search_path TO %s, public' % repository.namespace);
+        return session
+
     config.add_request_method(new_dbsession, 'new_dbsession')
     # make request.dbsession available for use in Pyramid
     config.add_request_method(
-        # r.tm is the transaction manager used by pyramid_tm
-        lambda r: new_dbsession(r),
+        new_dbsession,
         'dbsession',
         reify=True
         )

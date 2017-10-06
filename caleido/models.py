@@ -6,9 +6,11 @@ from sqlalchemy import (
     Date,
     Sequence,
     ForeignKey,
-    ForeignKeyConstraint
+    ForeignKeyConstraint,
+    UniqueConstraint
     )
 from sqlalchemy.orm import relationship, configure_mappers
+from sqlalchemy.orm.attributes import instance_dict
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy_utils import DateRangeType, LtreeType, PasswordType
@@ -20,7 +22,7 @@ class Kind(Base):
     key = Column(Unicode(32), primary_key=True)
     label = Column(Unicode(128))
 
-    
+
 class WorkType(Base):
     __tablename__ = 'work_type_schemes'
     key = Column(Unicode(32), primary_key=True)
@@ -116,7 +118,7 @@ class Account(Base):
                   nullable=False)
     value = Column(Unicode(128), nullable=False)
 
-    
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, Sequence('users_id_seq'), primary_key=True)
@@ -126,7 +128,7 @@ class User(Base):
     userid = Column(Unicode(128), index=True, nullable=False)
     credentials = Column(PasswordType(schemes=['pbkdf2_sha512']),
                          nullable=False)
-    
+
 class Owner(Base):
     __tablename__ = 'owners'
     id = Column(Integer, Sequence('owners_id_seq'), primary_key=True)
@@ -136,7 +138,7 @@ class Owner(Base):
                       nullable=False)
     userid = Column(Unicode(128), index=True, nullable=False)
 
-    
+
 class Group(Base):
     __tablename__ = 'groups'
     id = Column(Integer, ForeignKey('actors.id'), primary_key=True)
@@ -148,11 +150,11 @@ class Membership(Base):
     id = Column(Integer, Sequence('memberships_id_seq'), primary_key=True)
     actor_id = Column(Integer, ForeignKey('actors.id'), index=True, nullable=False)
     actor = relationship('Actor', back_populates='memberships')
-    
+
     group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=False)
     during = Column(DateRangeType)
 
-    
+
 class Contributor(Base):
     "An Actor that made a specific contribution to a work"
     __tablename__ = 'contributors'
@@ -170,8 +172,22 @@ class Contributor(Base):
     during = Column(DateRangeType, nullable=True)
     work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
     work = relationship('Work', back_populates='contributors')
-    
+
     actor_id = Column(Integer, ForeignKey('actors.id'), index=True, nullable=False)
     position = Column(Integer)
+
+class Repository(Base):
+    __tablename__ = 'repositories'
+    namespace = Column(Unicode(32), primary_key=True)
+    vhost_name = Column(Unicode(128), nullable=False, unique=True)
+    config_revision = Column(Integer, nullable=False)
+    schema_version = Column(Unicode(32), nullable=False)
+
+    __mapper_args__ = {
+        'version_id_col': config_revision
+        }
+
+    def to_dict(self):
+        return instance_dict(self)
 
 configure_mappers()

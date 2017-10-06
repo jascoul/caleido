@@ -19,11 +19,16 @@ class BaseTest(unittest.TestCase):
     def setUp(self):
         self.app = main({}, **self.app_settings())
         self.storage = self.app.registry['storage']
-        self.api = WebTestApp(self.app)
+        self.api = WebTestApp(self.app,
+                              extra_environ={'HTTP_HOST': 'unittest.localhost'})
         storage = Storage(self.app.registry)
-        storage.drop_all()
-        storage.create_all()
-        storage.initialize('admin', 'admin')
+        session = storage.make_session()
+        if 'unittest' in storage.repository_info(session):
+            storage.drop_repository(session, 'unittest')
+            transaction.commit()
+        storage.create_repository(session, 'unittest', 'unittest.localhost')
+        storage.initialize_repository(session, 'unittest', 'admin', 'admin')
+        transaction.commit()
 
     def admin_token(self):
         return self.api.post_json(
