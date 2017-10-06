@@ -39,6 +39,8 @@ class TypeListingResponseSchema(colander.MappingSchema):
 @resource(name='Type',
           collection_path='/api/v1/schemes/types',
           path='/api/v1/schemes/types/{id}',
+          tags=['scheme'],
+          api_security=[{'jwt':[]}],
           factory=type_factory)    
 class TypeAPI(object):
     def __init__(self, request, context):
@@ -46,8 +48,6 @@ class TypeAPI(object):
         self.context = context
         
     @view(permission='view',
-          tags=['scheme'],
-          api_security=[{'jwt':[]}],
           response_schemas={
         '200': TypeResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -59,10 +59,8 @@ class TypeAPI(object):
         return TypeSchema().serialize(self.context.to_dict())
 
     @view(permission='edit',
-          tags=['scheme'],
           schema=TypeSchema(),
           validators=(colander_body_validator,),
-          api_security=[{'jwt':[]}],
           response_schemas={
         '200': TypeResponseSchema(description='Ok'),
         '400': ErrorResponseSchema(description='Bad Request'),
@@ -77,8 +75,6 @@ class TypeAPI(object):
 
 
     @view(permission='view',
-          tags=['scheme'],
-          api_security=[{'jwt':[]}],
           response_schemas={
         '200': TypeListingResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized')})

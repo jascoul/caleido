@@ -54,6 +54,8 @@ class UserListingRequestSchema(colander.MappingSchema):
 @resource(name='User',
           collection_path='/api/v1/users',
           path='/api/v1/users/{id}',
+          tags=['user'],
+          api_security=[{'jwt':[]}],
           factory=user_factory)    
 class UserAPI(object):
     def __init__(self, request, context):
@@ -61,8 +63,6 @@ class UserAPI(object):
         self.context = context
         
     @view(permission='view',
-          tags=['user'],
-          api_security=[{'jwt':[]}],
           response_schemas={
         '200': UserResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -75,8 +75,6 @@ class UserAPI(object):
 
 
     @view(permission='delete',
-          tags=['user'],
-          api_security=[{'jwt':[]}],
           response_schemas={
         '200': StatusResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -89,8 +87,6 @@ class UserAPI(object):
         return {'status': 'ok'}
 
     @view(permission='add',
-          tags=['user'],
-          api_security=[{'jwt':[]}],
           schema=UserSchema(),
           validators=(colander_body_validator,),
           response_schemas={
@@ -110,8 +106,6 @@ class UserAPI(object):
 
 
     @view(permission='view',
-          tags=['user'],
-          api_security=[{'jwt':[]}],
           schema=UserListingRequestSchema(),
           validators=(colander_validator),
           response_schemas={
