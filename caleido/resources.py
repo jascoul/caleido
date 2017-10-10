@@ -1,80 +1,117 @@
 import math
 
+from pyramid.httpexceptions import HTTPForbidden
 from pyramid.security import Allow
+from pyramid.interfaces import IAuthorizationPolicy
 from sqlalchemy_utils.functions import get_primary_keys
+from sqlalchemy.orm import load_only
 import transaction
 from caleido.models import User, ActorType
 
-class Resource(object):
-    orm = None
-    
-    def __init__(self, session, resource):
+
+class BaseResource(object):
+    orm_class = None
+    key_col_name = None
+
+
+    def __init__(self, registry, session, key=None, model=None):
         self.session = session
-        self.model = resource
+        self.registry = registry
+        if model:
+            self.model = model
+        elif key:
+            self.model = self.get(key)
+        else:
+            self.model = None
 
 
-    def to_dict(self):
+    def __acl__(self):
+        return []
+
+
+    def get(self, key=None, principals=None):
+        if key:
+            model = self.session.query(self.orm_class).filter(
+                getattr(self.orm_class,
+                        self.key_col_name) == key).first()
+        else:
+            model = self.model
+        if model and principals:
+            if not self.is_permitted(model, principals, 'view'):
+                return None
+        return model
+
+
+    def get_many(self, keys, principals=None):
         raise NotImplemented()
 
-    
-    def from_dict(self, data):
-        self.model = self.orm(**data)
+
+    def put(self, model=None, principals=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('No model to put')
+            model = self.model
+        key = getattr(model, self.key_col_name)
+        if key is None:
+            permission = 'add'
+        else:
+            permission = 'edit'
+        self.session.add(model)
+        if principals and not self.is_permitted(
+            model, principals, permission):
+            raise HTTPForbidden('Failed ACL check for permission "%s"' % permission)
+        self.session.flush()
+        return model
 
 
-    def insert(self):
-        self.session.add(self.model)
+    def put_many(self, models, principals=None):
+        raise NotImplemented()
+
+
+    def delete(self, model=None, principals=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('No model to delete')
+            model = self.model
+        self.session.delete(model)
+        if principals and not self.is_permitted(
+            model, principals, 'delete'):
+            raise HTTPForbidden('Failed ACL check for permission "delete"')
         self.session.flush()
 
-
-    def delete(self):
-        self.session.delete(self.model)
-        self.session.flush()
-        
-    def reload(self):
-        self.session.refresh(self.model)
-        primary_keys = get_primary_keys(self.orm)
-        if len(primary_keys) != 1:
-            raise ValueError(
-                'default implementation can not reload composite primary keys')
-        pkey_name, pkey_column = list(primary_keys.items())[0]
-        pkey_value = getattr(self.model, pkey_name)
-        transaction.commit()
-        self.model = self.session.query(
-            self.orm).filter(pkey_column==pkey_value).first()
-            
-    def listing_query(self):
-        query = self.session.query(self.orm)
-        return query
-
-    def acl_filter(self, query, userid, principals):
-        raise NotImplemented
-
-    def list(self, query, page=1, page_size=100):
+    def search(self,
+               filters=None,
+               principals=None,
+               limit=100,
+               offset=0,
+               keys_only=False):
+        query = self.session.query(self.orm_class)
+        for filter in self.acl_filters(principals) + (filters or []):
+            query = query.filter(filter)
         total = query.count()
-        offset = (page - 1) * page_size
-        query = query.offset(offset).limit(page_size)
-        total_pages = math.ceil(total / page_size)
-        if page == 1:
-            prev = None
-        else:
-            prev = page - 1
-        if page == total_pages:
-            next = None
-        else:
-            next = page + 1
+        query = query.offset(offset).limit(limit)
+        if keys_only:
+            query = query.options(load_only(self.key_col_name))
         return {'total': total,
-                'page': {'total': total_pages,
-                         'size': page_size,
-                         'current': page,
-                         'previous': prev,
-                         'next': next},
-                'result': (self.__class__(self.session, row)
-                           for row in query.all())}
+                'hits': [h for h in query.all()]}
 
-        
-class UserResource(Resource):
-    orm = User
-        
+
+    def is_permitted(self, model, principals, permission):
+        policy = self.registry.queryUtility(IAuthorizationPolicy)
+        context = self.__class__(self.registry, self.session, model=model)
+        permitted = policy.permits(context, principals, permission)
+        if permitted == False:
+            return False
+        return True
+
+    def acl_filters(self, principals):
+        return []
+
+class UserResource(BaseResource):
+    orm_class = User
+    key_col_name = 'id'
+
+
     def __acl__(self):
         yield (Allow, 'group:admin', 'view')
         yield (Allow, 'group:admin', 'add')
@@ -88,20 +125,18 @@ class UserResource(Resource):
             yield (Allow, 'system.Authenticated', 'view')
 
 
-    def acl_filter(self, query, userid, principals):
-        if not 'group:admin' in principals:
-            # only show current user
-            query = query.filter(User.userid == userid)
-        return query
+    def acl_filters(self, principals):
+        filters = []
+        if 'group:admin' in principals:
+            return filters
+        # only return the user object of logged in user
+        user_ids = [
+            p.split(':', 1)[1] for p in principals if p.startswith('user:')]
+        for user_id in user_ids:
+            filters.append(User.userid == user_id)
+        return filters
 
-        
-    def to_dict(self):
-        return {'id': self.model.id,
-                'user_group': self.model.user_group,
-                'userid': self.model.userid,
-                'credentials': self.model.credentials.hash.decode('utf8')}
 
-    
 class TypeResource(object):
     schemes = {'actor': ActorType}
     orm = None
@@ -110,7 +145,7 @@ class TypeResource(object):
         yield (Allow, 'system.Authenticated', 'view')
         yield (Allow, 'group:admin', 'edit')
 
-    
+
     def __init__(self, session, scheme_id):
         self.session = session
         self.scheme_id = scheme_id
@@ -131,7 +166,7 @@ class TypeResource(object):
         for key, label in values.items():
             self.session.add(self.orm(key=key, label=label))
         self.session.flush()
-        
+
     def to_dict(self):
         values = []
         for setting in self.session.query(self.orm).all():

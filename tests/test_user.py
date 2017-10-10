@@ -1,9 +1,15 @@
 import time
 
 import jwt
+import pytest
 import transaction
+from pyramid.httpexceptions import HTTPForbidden
+
 from caleido.models import User
+from caleido.resources import UserResource
+
 from core import BaseTest
+
 
 class UserAuthTest(BaseTest):
 
@@ -19,6 +25,34 @@ class UserAuthTest(BaseTest):
         # but can be compared to plain text passwords
         assert admin.credentials == 'admin'
         assert admin.credentials.hash.startswith(b'$pbkdf2-sha512')
+
+
+    def test_resource_methods_with_specified_principals(self):
+        # this tests the explicity passing of principals into the
+        # resource methods (get, put, delete).
+        # With normal webrequests, this is evaluated before executing the
+        # view by pyramid, so the principals do not need to be passed.
+
+        session = self.storage.make_session(namespace='unittest')
+        context = UserResource(self.storage.registry, session)
+        # let's try to retrieve the admin user as user john
+        user = context.get(1, principals=['user:john'])
+        assert user is None
+        # create user john as editor
+        john = context.put(
+            User(userid='john', credentials='j0hn', user_group=10),
+            principals=['group:admin'])
+        # user john should be retrievable by user john
+        user = context.get(john.id, principals=['user:john'])
+        assert user is not None
+        assert user.id == john.id
+        # john can not delete himself
+        with pytest.raises(HTTPForbidden):
+            context.delete(john, principals=['user:john'])
+        # but an admin can
+        context.delete(john, principals=['group:admin'])
+
+class UserAuthWebTest(BaseTest):
 
     def test_authenticating_user(self):
         # valid login
@@ -138,25 +172,21 @@ class UserAuthTest(BaseTest):
         session.flush()
         transaction.commit()
         # admin user can retrieve all users
-        out = self.api.get('/api/v1/users?page_size=10', headers=headers)
-        assert len(out.json['result']) == 10
+        out = self.api.get('/api/v1/users?limit=10', headers=headers)
+        assert len(out.json['records']) == 10
         assert out.json['total'] == 13
-        assert out.json['page']['total'] == 2
-        assert out.json['page']['current'] == 1
         # lets retrieve the next page with the remaining users
-        out = self.api.get('/api/v1/users?page=2&page_size=10', headers=headers)
-        assert len(out.json['result']) == 3
+        out = self.api.get('/api/v1/users?offset=10', headers=headers)
+        assert len(out.json['records']) == 3
         assert out.json['total'] == 13
-        assert out.json['page']['total'] == 2
-        assert out.json['page']['current'] == 2
         # non admin users can only retrieve themselves
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'user_4', 'password': 'user_4'}).json['token']
         out = self.api.get('/api/v1/users',
                            headers={'Authorization': 'Bearer %s' % token})
-        assert len(out.json['result']) == 1
-        assert out.json['result'][0]['userid'] == 'user_4'
+        assert len(out.json['records']) == 1
+        assert out.json['records'][0]['userid'] == 'user_4'
 
 
 

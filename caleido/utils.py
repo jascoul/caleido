@@ -17,17 +17,9 @@ class ErrorResponseSchema(colander.MappingSchema):
                 location = colander.SchemaNode(colander.String())
         status = ErrorStatus
 
-    
+
 class StatusResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
         status = ErrorStatus
-
-
-class PagingInfoSchema(colander.MappingSchema):
-    total = colander.SchemaNode(colander.Int())
-    size = colander.SchemaNode(colander.Int())
-    current = colander.SchemaNode(colander.Int())
-    previous = colander.SchemaNode(colander.Int())
-    next = colander.SchemaNode(colander.Int())
 

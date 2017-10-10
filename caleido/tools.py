@@ -23,8 +23,6 @@ def initialize_db():
     print('- Adding user "admin" with password "admin"')
     storage.initialize_repository(session, 'test', 'admin', 'admin')
     transaction.commit()
-    #with transaction.manager:
-    #    storage.initialize('admin', 'admin')
 
 def drop_db():
     if not len(sys.argv) == 2:

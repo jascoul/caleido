@@ -129,6 +129,18 @@ class User(Base):
     credentials = Column(PasswordType(schemes=['pbkdf2_sha512']),
                          nullable=False)
 
+
+    def to_dict(self):
+        return {'id': self.id,
+                'user_group': self.user_group,
+                'userid': self.userid,
+                'credentials': self.credentials.hash.decode('utf8')}
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
+
+
 class Owner(Base):
     __tablename__ = 'owners'
     id = Column(Integer, Sequence('owners_id_seq'), primary_key=True)

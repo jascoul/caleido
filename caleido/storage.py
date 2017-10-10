@@ -36,16 +36,6 @@ class Storage(object):
         session.flush()
         session.execute('SET search_path TO %s, public' % namespace);
         Base.metadata.create_all(bind=session.connection())
-        session.execute('SET search_path TO public');
-        session.flush()
-        return
-        # temporarily set the schema attribute on the tables
-        # to the correct namespace, afterwards reset
-        for table in Base.metadata.tables.values():
-            table.schema = namespace
-        Base.metadata.create_all(bind=session.connection())
-        for table in Base.metadata.tables.values():
-            table.schema = None
         session.flush()
 
     def drop_repository(self, session, namespace):
