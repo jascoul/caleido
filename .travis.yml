@@ -1,0 +1,17 @@
+cache:
+  pip: true
+
+language:
+  python
+
+python:
+  - "3.4"
+  - "3.5"
+  - "3.6"
+
+install:
+  - pip install tox
+  - export TOXENV=py${TRAVIS_PYTHON_VERSION//./}
+
+script:
+  - tox -e ${TOXENV}
