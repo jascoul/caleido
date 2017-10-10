@@ -10,6 +10,7 @@ python:
   - "3.6"
 
 install:
+  - pip install -e .
   - pip install tox
   - export TOXENV=py${TRAVIS_PYTHON_VERSION//./}
 
