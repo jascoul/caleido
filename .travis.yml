@@ -27,4 +27,5 @@ before_script:
   - psql -c 'CREATE DATABASE caleido;' -U postgres
   - psql -c "CREATE USER caleido WITH PASSWORD 'c4l31d0'" -U postgres
   - psql -c 'GRANT ALL PRIVILEGES ON DATABASE caleido to caleido' -U postgres;
+  - psql caleido -c 'CREATE EXTENSION ltree' -U postgres
   - initialize_db caleido.ini
