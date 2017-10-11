@@ -12,25 +12,28 @@ Installation
 
 Caleido is being developed as a python3 app, with a dependency on PostgreSQL 9.5
 To install the software
-
-    > git clone https://github.com/jascoul/caleido.git
-    > cd caleido
-    > virtualenv --python=python3 .
-    > source bin/activate
-    > pip install -e .
+.. code-block:: bash
+  > git clone https://github.com/jascoul/caleido.git
+  > cd caleido
+  > virtualenv --python=python3 .
+  > source bin/activate
+  > pip install -e .
 
 Next, create a PostgreSQL database with the same user/password as the caleido.ini file
 (Have a look at the psql commands in the travis.yaml file)
 
 To generate the initial database, run the initialize_db script from the bin folder
 
-    > initialize_db caleido.ini
+.. code-block:: bash
+  > initialize_db caleido.ini
 
 To run the unittests, install tox, and run the tox command
 
-    > pip install tox
-    > tox
+.. code-block:: bash
+  > pip install tox
+  > tox
 
 Or, start a webserver and visit the API at http://localhost:6543/api/swagger.html
 
-    > pserve caleido.ini
+.. code-block:: bash
+  > pserve caleido.ini
