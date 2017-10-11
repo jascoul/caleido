@@ -1,3 +1,4 @@
+.. highlight:: rst
 
 Caleido, a Research Intelligence platform
 =========================================
@@ -7,38 +8,40 @@ Caleido, a Research Intelligence platform
 
 This is a work-in-progress, research project from Erasmus University Library Rotterdam.
 
-Installation
-------------
+Setting up Caleido
+------------------
 
-Caleido is being developed as a python3 app, with a dependency on PostgreSQL 9.5
-To install the software:
+* Install Python3.4 or newer
+* Install PostgreSQL 9.5 or newer
+* Clone the repository, create a virtualenv, install dependencies::
 
-```bash
-> git clone https://github.com/jascoul/caleido.git
-> cd caleido
-> virtualenv --python=python3 .
-> source bin/activate
-> pip install -e .
-```
+    git clone https://github.com/jascoul/caleido.git
+    cd caleido
+    virtualenv --python=python3 .
+    source bin/activate
+    pip install -e .
 
-Next, create a PostgreSQL database with the same user/password as the caleido.ini file
-(Have a look at the psql commands in the travis.yaml file)
+* Create a PostgreSQL database with the same user/password as the caleido.ini file (Have a look at the psql commands in the travis.yaml file)
+* Initialized the database with the initialize_db script::
 
-To generate the initial database, run the initialize_db script from the bin folder
+    initialize_db caleido.ini
 
-```bash
-> initialize_db caleido.ini
-```
+Tests
+-----
 
-To run the unittests, install tox, and run the tox command
+* Install tox and optionally pytest::
 
-```bash
-> pip install tox
-> tox
-```
+    pip install tox
+* Run tox::
 
-Or, start a webserver and visit the API at http://localhost:6543/api/swagger.html
+    tox 
 
-```bash
-> pserve caleido.ini
-```
+Running the API
+---------------
+
+* Start the development webserver::
+
+    pserve caleido.ini
+
+* Visit the API browser at http://localhost:6543/api/swagger.html
+
