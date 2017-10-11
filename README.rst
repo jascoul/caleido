@@ -22,17 +22,17 @@ Setting up Caleido
     pip install -e .
 
 * Create a PostgreSQL database with the same user/password as the caleido.ini file (Have a look at the psql commands in the travis.yaml file)
-* Initialized the database with the initialize_db script::
+* Initialize the database with the initialize_db script::
 
     initialize_db caleido.ini
 
 Tests
 -----
 
-* Install tox and optionally pytest::
+* Install tox::
 
     pip install tox
-* Run tox::
+* Run the unittests::
 
     tox 
 
