@@ -103,6 +103,18 @@ class Actor(Base):
     memberships = relationship('Membership', back_populates='actor')
     accounts = relationship('Account', back_populates='actor')
 
+    def to_dict(self):
+        return {'id': self.id,
+                'type': self.type,
+                'name': self.name}
+
+    def update_dict(self, data):
+        for key, value in data.items():
+            setattr(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
 
 class Account(Base):
     __tablename__ = 'accounts'

@@ -1,22 +1,12 @@
 import colander
 from cornice.resource import resource, view
 from cornice.validators import colander_body_validator, colander_validator
-from pyramid.httpexceptions import HTTPNotFound
 
 from caleido.models import User
-from caleido.resources import UserResource
+from caleido.resources import ResourceFactory, UserResource
 
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema)
-
-def user_factory(request):
-    key = request.matchdict.get('id')
-    user = UserResource(request.registry,
-                        request.dbsession,
-                        key)
-    if key and user.model is None:
-        raise HTTPNotFound()
-    return user
 
 class UserSchema(colander.MappingSchema):
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
@@ -54,7 +44,7 @@ class UserListingRequestSchema(colander.MappingSchema):
           path='/api/v1/users/{id}',
           tags=['user'],
           api_security=[{'jwt':[]}],
-          factory=user_factory)
+          factory=ResourceFactory(UserResource))
 class UserAPI(object):
     def __init__(self, request, context):
         self.request = request
@@ -70,7 +60,6 @@ class UserAPI(object):
     def get(self):
         "Retrieve a User"
         return UserSchema().serialize(self.context.model.to_dict())
-
 
     @view(permission='delete',
           response_schemas={

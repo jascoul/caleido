@@ -44,7 +44,7 @@ def login_view(request):
     principals = request.context.principals(user_id)
     result = {'status': 'ok',
               'token': request.create_jwt_token(user_id, principals=principals)}
-    
+
     return result
 
 renew = Service(name='renew',
@@ -68,7 +68,7 @@ def renew_view(request):
     user_id = claims['sub']
     if not request.context.existing_user(user_id):
         raise HTTPForbidden('Invalid JWT token: unknown user')
-    
+
     principals = request.context.principals(user_id)
     result = {'status': 'ok',
               'token': request.create_jwt_token(user_id, principals=principals)}
@@ -78,6 +78,14 @@ def renew_view(request):
 def forbidden_view(request):
     response = request.response
     description = None
+    if request.errors and request.errors.status == 404:
+        response.status = 404
+        response.content_type = 'application/json'
+        response.write(
+            json.dumps({'status': 'error',
+                        'errors': request.errors}).encode('utf8'))
+        return response
+
     if request.exception and request.exception.detail:
         description = request.exception.detail
     if request.authenticated_userid or request.headers.get('Authorization'):
@@ -113,4 +121,4 @@ def notfound_view(request):
                                 'description': description or 'Not Found',
                                 'location': 'request'}]}).encode('utf8'))
     return response
-    
+

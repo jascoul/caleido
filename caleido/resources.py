@@ -6,8 +6,22 @@ from pyramid.interfaces import IAuthorizationPolicy
 from sqlalchemy_utils.functions import get_primary_keys
 from sqlalchemy.orm import load_only
 import transaction
-from caleido.models import User, ActorType
+from caleido.models import User, Actor, ActorType
 
+class ResourceFactory(object):
+    def __init__(self, resource_class):
+        self._class = resource_class
+
+    def __call__(self, request):
+        key = request.matchdict.get('id')
+        resource = self._class(request.registry,
+                               request.dbsession,
+                               key)
+        if key and resource.model is None:
+            request.errors.status = 404
+            request.errors.add('path', 'id', 'The resource id does not exist')
+            raise HTTPForbidden()
+        return resource
 
 class BaseResource(object):
     orm_class = None
@@ -109,6 +123,36 @@ class BaseResource(object):
 
 class UserResource(BaseResource):
     orm_class = User
+    key_col_name = 'id'
+
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', 'view')
+        yield (Allow, 'group:admin', 'add')
+        yield (Allow, 'group:admin', 'edit')
+        yield (Allow, 'group:admin', 'delete')
+        if self.model:
+            # users can view their own info
+            yield (Allow, 'user:%s' % self.model.userid, 'view')
+        elif self.model is None:
+            # no model loaded yet, allow container view
+            yield (Allow, 'system.Authenticated', 'view')
+
+
+    def acl_filters(self, principals):
+        filters = []
+        if 'group:admin' in principals:
+            return filters
+        # only return the user object of logged in user
+        user_ids = [
+            p.split(':', 1)[1] for p in principals if p.startswith('user:')]
+        for user_id in user_ids:
+            filters.append(User.userid == user_id)
+        return filters
+
+
+class ActorResource(BaseResource):
+    orm_class = Actor
     key_col_name = 'id'
 
 
