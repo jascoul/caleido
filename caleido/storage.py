@@ -109,6 +109,52 @@ def get_tm_session(session_factory, transaction_manager):
         dbsession, transaction_manager=transaction_manager)
     return dbsession
 
+REPOSITORY_CONFIG = {}
+
+class RepositoryConfig(object):
+    orm_table = {'actor_type': ActorType}
+
+    def __init__(self, session, namespace, config_revision=0):
+        self.session = session
+        self.namespace = namespace
+        self.config_revision = config_revision
+        if self.config_revision in REPOSITORY_CONFIG.get(self.namespace, {}):
+            self.cached_config = REPOSITORY_CONFIG[
+                self.namespace][self.config_revision]
+        else:
+            REPOSITORY_CONFIG[self.namespace] = {self.config_revision: {}}
+
+    def type_config(self, type):
+        if type in self.cached_config:
+            values = self.cached_config[type]
+        else:
+            orm_table = self.orm_table[type]
+            values = []
+            for setting in self.session.query(orm_table).all():
+                values.append({'key': setting.key, 'label': setting.label})
+            self.cached_config[type] = values
+        return values
+
+    def put_type_config(self, type, values):
+        orm_table = self.orm_table[type]
+        values = dict((v['key'], v['label']) for v in values)
+        for item in self.session.query(orm_table).all():
+            if item.key not in values:
+                self.session.delete(item)
+            else:
+                if values[item.key] != item.label:
+                    item.label = values[item.key]
+                    self.session.add(item)
+                del values[item.key]
+        for key, label in values.items():
+            self.session.add(self.orm(key=key, label=label))
+        # update the repository config revision to force cache invalidation
+        repo = self.session(Repository).query(
+            Repository.namespace==self.namespace).first()
+        repo.config_revision = Repository.config_revision + 1
+        self.session.add(repo)
+        self.session.flush()
+
 
 def includeme(config):
     """
@@ -140,15 +186,31 @@ def includeme(config):
         host = request.headers['Host'].split(':')[0]
         repository = session.query(Repository).filter(Repository.vhost_name == host).first()
         if repository:
+            request.environ[
+                'caleido.repository.namespace'] = repository.namespace
+            request.environ[
+                'caleido.repository.config_revision'] = repository.config_revision
             session.execute(
                 'SET search_path TO %s, public' % repository.namespace);
         return session
+
+    def new_repository(request):
+        session = request.dbsession
+        namespace = request.environ['caleido.repository.namespace']
+        rev = request.environ['caleido.repository.config_revision']
+        repository = RepositoryConfig(session, namespace, config_revision=rev)
+        return repository
 
     config.add_request_method(new_dbsession, 'new_dbsession')
     # make request.dbsession available for use in Pyramid
     config.add_request_method(
         new_dbsession,
         'dbsession',
+        reify=True
+        )
+    config.add_request_method(
+        new_repository,
+        'repository',
         reify=True
         )
 
