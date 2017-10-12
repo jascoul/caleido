@@ -32,6 +32,9 @@ class ActorWebTest(BaseTest):
                                  {'name': 'John', 'type': 'foobar'},
                                  headers=headers,
                                  status=400)
-        import pdb;pdb.set_trace()
+        assert out.json['errors'][0]['name'] == 'type'
+        assert out.json['errors'][0]['location'] == 'body'
+        assert out.json['errors'][0]['description'].startswith(
+            '"foobar" is not one of')
 
 

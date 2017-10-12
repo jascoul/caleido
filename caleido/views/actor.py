@@ -8,10 +8,18 @@ from caleido.resources import ResourceFactory, ActorResource
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema)
 
+@colander.deferred
+def deferred_actor_type_validator(node, kw):
+    types = kw['repository'].type_config('actor_type')
+    return colander.OneOf([t['key'] for t in types])
+
 class ActorSchema(colander.MappingSchema):
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
-    type = colander.SchemaNode(colander.String())
+    type = colander.SchemaNode(colander.String(),
+                               validator=deferred_actor_type_validator)
     name = colander.SchemaNode(colander.String())
+
+
 
 class ActorResponseSchema(colander.MappingSchema):
     body = ActorSchema()
@@ -38,6 +46,14 @@ class ActorListingRequestSchema(colander.MappingSchema):
                                     validator=colander.Range(0, 100),
                                     missing=20)
 
+def colander_actor_validator(request, schema=None, deserializer=None, **kwargs):
+    if schema:
+        schema = schema.bind(repository=request.repository)
+    for method in kwargs.get('response_schemas', {}):
+        kwargs['response_schemas'][method] = kwargs[
+            'response_schemas'][method].bind(repository=request.repository)
+    return colander_body_validator(request, schema=schema, **kwargs)
+
 @resource(name='Actor',
           collection_path='/api/v1/actors',
           path='/api/v1/actors/{id}',
@@ -62,7 +78,7 @@ class ActorAPI(object):
 
     @view(permission='edit',
           schema=ActorSchema(),
-          validators=(colander_body_validator,),
+          validators=(colander_actor_validator,),
           response_schemas={
         '200': ActorResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -90,7 +106,7 @@ class ActorAPI(object):
 
     @view(permission='add',
           schema=ActorSchema(),
-          validators=(colander_body_validator,),
+          validators=(colander_actor_validator,),
           response_schemas={
         '201': ActorResponseSchema(description='Created'),
         '400': ErrorResponseSchema(description='Bad Request'),

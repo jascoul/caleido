@@ -122,8 +122,9 @@ class RepositoryConfig(object):
             self.cached_config = REPOSITORY_CONFIG[
                 self.namespace][self.config_revision]
         else:
-            REPOSITORY_CONFIG[self.namespace] = {self.config_revision: {}}
-
+            self.cached_config = {}
+            REPOSITORY_CONFIG[self.namespace] = {
+                self.config_revision: self.cached_config}
     def type_config(self, type):
         if type in self.cached_config:
             values = self.cached_config[type]
