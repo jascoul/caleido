@@ -1,10 +1,32 @@
 import colander
+
 from cornice.validators import colander_body_validator
+
 
 OKStatus = colander.SchemaNode(colander.String(),
                                validator=colander.OneOf(['ok']))
 ErrorStatus = colander.SchemaNode(colander.String(),
                                   validator=colander.OneOf(['error']))
+
+class JsonMappingSchemaSerializerMixin(object):
+    def to_json(self, appstruct):
+        cstruct = {}
+        for key, value in appstruct.items():
+            node = self.get(key)
+            if value is colander.null:
+                continue
+            elif isinstance(node.typ, colander.String):
+                cstruct[key] = node.serialize(value)
+            elif isinstance(node.typ, colander.Integer):
+                cstruct[key] = int(node.serialize(value))
+            elif isinstance(node.typ, colander.Boolean):
+                cstruct[key] = node.serialize(value) == 'true'
+            else:
+                cstruct[key] = node.serialize(value) == 'true'
+                raise ValueError('Unsupported type: %s' % node.typ)
+        return cstruct
+
+
 
 class ErrorResponseSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -32,3 +54,4 @@ def colander_bound_repository_body_validator(
         kwargs['response_schemas'][method] = kwargs[
             'response_schemas'][method].bind(repository=request.repository)
     return colander_body_validator(request, schema=schema, **kwargs)
+

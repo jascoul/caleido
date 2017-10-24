@@ -83,19 +83,39 @@ class Work(Base):
                                 collection_class=ordering_list('position'))
 
 
+def actor_default_label(context):
+    params = context.current_parameters
+
+    if params['type'] == 'individual':
+        name = params['family_name']
+        if params.get('family_name_prefix'):
+            name = '%s %s' % (params['family_name_prefix'], name)
+        if params.get('family_name_suffix'):
+            name = '%s %s' % (name, params['family_name_suffix'])
+        if params.get('initials'):
+            name = '%s, %s' % (name, params['initials'])
+        if params.get('given_name'):
+            name = '%s (%s)' % (name, params['given_name'])
+        return name
+    else:
+        return params['corporate_international_name']
+
 
 class Actor(Base):
     __tablename__ = 'actors'
+
     id = Column(Integer, Sequence('works_id_seq'), primary_key=True)
     type = Column(Unicode(32),
                   ForeignKey('actor_type_schemes.key'),
                   nullable=False)
-    name = Column(Unicode(128), nullable=False)
-    international_name = Column(Unicode(128))
-    native_name = Column(Unicode(128))
-    abbreviated_name = Column(Unicode(64))
-    family_name = Column(Unicode(64))
-    given_name = Column(Unicode(64))
+    label = Column(Unicode(128),
+                   default=actor_default_label,
+                   onupdate=actor_default_label)
+    corporate_international_name = Column(Unicode(256))
+    corporate_native_name = Column(Unicode(256))
+    corporate_abbreviated_name = Column(Unicode(128))
+    family_name = Column(Unicode(128))
+    given_name = Column(Unicode(128))
     initials = Column(Unicode(32))
     family_name_prefix = Column(Unicode(64))
     family_name_suffix = Column(Unicode(64))
@@ -104,9 +124,10 @@ class Actor(Base):
     accounts = relationship('Account', back_populates='actor')
 
     def to_dict(self):
-        return {'id': self.id,
-                'type': self.type,
-                'name': self.name}
+        result = instance_dict(self)
+        if '_sa_instance_state' in result:
+            del result['_sa_instance_state']
+        return result
 
     def update_dict(self, data):
         for key, value in data.items():

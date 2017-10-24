@@ -7,6 +7,7 @@ from caleido.resources import ResourceFactory, ActorResource
 
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
+                           JsonMappingSchemaSerializerMixin,
                            colander_bound_repository_body_validator)
 
 @colander.deferred
@@ -14,12 +15,40 @@ def deferred_actor_type_validator(node, kw):
     types = kw['repository'].type_config('actor_type')
     return colander.OneOf([t['key'] for t in types])
 
-class ActorSchema(colander.MappingSchema):
-    id = colander.SchemaNode(colander.Int(), missing=colander.drop)
+def actor_validator(node, kw):
+    if kw['type'] == 'individual':
+        required_name_field = 'family_name'
+    else:
+        required_name_field = 'corporate_international_name'
+    if not kw.get(required_name_field):
+        node.name = '%s.%s' % (node.name, required_name_field)
+        raise colander.Invalid(node, node.get(required_name_field).missing_msg)
+
+class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
+    def __init__(self, *args, **kwargs):
+        kwargs['validator'] = actor_validator
+        super(ActorSchema, self).__init__(*args, **kwargs)
+
+    id = colander.SchemaNode(colander.Int(),
+                             missing=colander.drop)
     type = colander.SchemaNode(colander.String(),
                                validator=deferred_actor_type_validator)
-    name = colander.SchemaNode(colander.String())
-
+    label = colander.SchemaNode(colander.String(),
+                                missing=colander.drop)
+    family_name = colander.SchemaNode(colander.String(),
+                                      missing=colander.drop)
+    family_name_prefix = colander.SchemaNode(colander.String(),
+                                             missing=colander.drop)
+    family_name_suffix = colander.SchemaNode(colander.String(),
+                                             missing=colander.drop)
+    given_name = colander.SchemaNode(colander.String(), missing=colander.drop)
+    initials = colander.SchemaNode(colander.String(), missing=colander.drop)
+    corporate_international_name = colander.SchemaNode(colander.String(),
+                                                       missing=colander.drop)
+    corporate_native_name = colander.SchemaNode(colander.String(),
+                                                missing=colander.drop)
+    corporate_abbreviated_name = colander.SchemaNode(colander.String(),
+                                                     missing=colander.drop)
 
 class ActorResponseSchema(colander.MappingSchema):
     body = ActorSchema()
@@ -66,7 +95,7 @@ class ActorAPI(object):
         })
     def get(self):
         "Retrieve a Actor"
-        return ActorSchema().serialize(self.context.model.to_dict())
+        return ActorSchema().to_json(self.context.model.to_dict())
 
     @view(permission='edit',
           schema=ActorSchema(),
@@ -81,7 +110,7 @@ class ActorAPI(object):
         "Modify an Actor"
         self.context.model.update_dict(self.request.validated)
         self.context.put()
-        return ActorSchema().serialize(self.context.model.to_dict())
+        return ActorSchema().to_json(self.context.model.to_dict())
 
 
     @view(permission='delete',
@@ -110,7 +139,7 @@ class ActorAPI(object):
         actor = Actor.from_dict(self.request.validated)
         self.context.put(actor)
         self.request.response.status = 201
-        return ActorSchema().serialize(actor.to_dict())
+        return ActorSchema().to_json(actor.to_dict())
 
 
     @view(permission='view',
@@ -127,8 +156,10 @@ class ActorAPI(object):
             offset=offset,
             limit=limit,
             principals=self.request.effective_principals)
+        schema = ActorSchema()
         return {'total': listing['total'],
-                'records': [actor.to_dict() for actor in listing['hits']],
+                'records': [schema.to_json(actor.to_dict())
+                            for actor in listing['hits']],
                 'limit': limit,
                 'offset': offset}
 

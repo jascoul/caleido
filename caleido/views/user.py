@@ -6,15 +6,17 @@ from caleido.models import User
 from caleido.resources import ResourceFactory, UserResource
 
 from caleido.utils import (ErrorResponseSchema,
-                           StatusResponseSchema)
+                           StatusResponseSchema,
+                           JsonMappingSchemaSerializerMixin)
 
-class UserSchema(colander.MappingSchema):
+class UserSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
     user_group = colander.SchemaNode(colander.Int())
     userid = colander.SchemaNode(colander.String())
     credentials = colander.SchemaNode(colander.String())
 
-class UserResponseSchema(colander.MappingSchema):
+class UserResponseSchema(colander.MappingSchema,
+                         JsonMappingSchemaSerializerMixin):
     body = UserSchema()
 
 class UserListingResponseSchema(colander.MappingSchema):
@@ -59,7 +61,7 @@ class UserAPI(object):
         })
     def get(self):
         "Retrieve a User"
-        return UserSchema().serialize(self.context.model.to_dict())
+        return UserSchema().to_json(self.context.model.to_dict())
 
     @view(permission='delete',
           response_schemas={
@@ -90,7 +92,7 @@ class UserAPI(object):
         self.context.session.refresh(user)
         user = self.context.get(user.id)
         self.request.response.status = 201
-        return UserSchema().serialize(user.to_dict())
+        return UserSchema().to_json(user.to_dict())
 
 
     @view(permission='view',
@@ -107,7 +109,8 @@ class UserAPI(object):
             offset=offset,
             limit=limit,
             principals=self.request.effective_principals)
+        schema = UserSchema()
         return {'total': listing['total'],
-                'records': [user.to_dict() for user in listing['hits']],
+                'records': [schema.to_json(user.to_dict()) for user in listing['hits']],
                 'limit': limit,
                 'offset': offset}
