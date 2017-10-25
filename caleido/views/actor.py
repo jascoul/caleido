@@ -33,7 +33,7 @@ class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                              missing=colander.drop)
     type = colander.SchemaNode(colander.String(),
                                validator=deferred_actor_type_validator)
-    label = colander.SchemaNode(colander.String(),
+    name = colander.SchemaNode(colander.String(),
                                 missing=colander.drop)
     family_name = colander.SchemaNode(colander.String(),
                                       missing=colander.drop)

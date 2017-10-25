@@ -60,6 +60,9 @@ class BaseResource(object):
         raise NotImplemented()
 
 
+    def pre_put_hook(self, model):
+        return model
+
     def put(self, model=None, principals=None):
         if model is None:
             if self.model is None:
@@ -70,6 +73,7 @@ class BaseResource(object):
             permission = 'add'
         else:
             permission = 'edit'
+        model = self.pre_put_hook(model)
         self.session.add(model)
         if principals and not self.is_permitted(
             model, principals, permission):
@@ -168,6 +172,21 @@ class ActorResource(BaseResource):
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
 
+    def pre_put_hook(self, model):
+        if model.type == 'individual':
+            name = model.family_name
+            if model.family_name_prefix:
+                name = '%s %s' % (model.family_name_prefix, name)
+            if model.family_name_suffix:
+                name = '%s %s' % (name, model.family_name_suffix)
+            if model.initials:
+                name = '%s, %s' % (name, model.initials)
+            if model.given_name:
+                name = '%s (%s)' % (name, model.given_name)
+            model.name = name
+        else:
+            model.name = model.corporate_international_name
+        return model
 
     def acl_filters(self, principals):
         filters = []

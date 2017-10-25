@@ -83,23 +83,6 @@ class Work(Base):
                                 collection_class=ordering_list('position'))
 
 
-def actor_default_label(context):
-    params = context.current_parameters
-
-    if params['type'] == 'individual':
-        name = params['family_name']
-        if params.get('family_name_prefix'):
-            name = '%s %s' % (params['family_name_prefix'], name)
-        if params.get('family_name_suffix'):
-            name = '%s %s' % (name, params['family_name_suffix'])
-        if params.get('initials'):
-            name = '%s, %s' % (name, params['initials'])
-        if params.get('given_name'):
-            name = '%s (%s)' % (name, params['given_name'])
-        return name
-    else:
-        return params['corporate_international_name']
-
 
 class Actor(Base):
     __tablename__ = 'actors'
@@ -108,9 +91,7 @@ class Actor(Base):
     type = Column(Unicode(32),
                   ForeignKey('actor_type_schemes.key'),
                   nullable=False)
-    label = Column(Unicode(128),
-                   default=actor_default_label,
-                   onupdate=actor_default_label)
+    name = Column(Unicode(128), nullable=False)
     corporate_international_name = Column(Unicode(256))
     corporate_native_name = Column(Unicode(256))
     corporate_abbreviated_name = Column(Unicode(128))

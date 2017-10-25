@@ -37,7 +37,7 @@ class ActorWebTest(BaseTest):
         assert out.json['errors'][0]['description'].startswith(
             '"foobar" is not one of')
 
-    def test_label_generator(self):
+    def test_individual_actor_name_generator(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json('/api/v1/actors',
                                  {'family_name': 'Doe', 'type': 'individual'},
@@ -47,7 +47,7 @@ class ActorWebTest(BaseTest):
         out = self.api.get('/api/v1/actors/%s' % john_id,
                           headers=headers,
                           status=200)
-        assert out.json['label'] == 'Doe'
+        assert out.json['name'] == 'Doe'
         self.api.put_json('/api/v1/actors/%s' % john_id,
                           {'family_name': 'Doe',
                            'family_name_prefix': 'van der',
@@ -59,5 +59,23 @@ class ActorWebTest(BaseTest):
         out = self.api.get('/api/v1/actors/%s' % john_id,
                           headers=headers,
                           status=200)
-        assert out.json['label'] == 'Doe'
+        assert out.json['name'] == 'van der Doe, J. (John)'
+
+    def test_corporate_actor_name_generator(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json(
+            '/api/v1/actors',
+            {'name': 'Erasmus University', 'type': 'organisation'},
+            headers=headers,
+            status=400)
+        assert out.json['errors'][0]['name'] == 'corporate_international_name'
+        assert out.json['errors'][0]['description']  == 'Required'
+        out = self.api.post_json(
+            '/api/v1/actors',
+            {'corporate_international_name': 'Erasmus University',
+             'type': 'organisation'},
+            headers=headers,
+            status=201)
+        assert out.json['name'] == out.json['corporate_international_name']
+
 
