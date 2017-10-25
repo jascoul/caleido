@@ -5,8 +5,10 @@ from pyramid.security import Allow
 from pyramid.interfaces import IAuthorizationPolicy
 from sqlalchemy_utils.functions import get_primary_keys
 from sqlalchemy.orm import load_only
+import sqlalchemy.exc
 import transaction
 from caleido.models import User, Actor, ActorType
+from caleido.exceptions import StorageError
 
 class ResourceFactory(object):
     def __init__(self, resource_class):
@@ -77,7 +79,10 @@ class BaseResource(object):
         if principals and not self.is_permitted(
             model, principals, permission):
             raise HTTPForbidden('Failed ACL check for permission "%s"' % permission)
-        self.session.flush()
+        try:
+            self.session.flush()
+        except sqlalchemy.exc.IntegrityError as err:
+            raise StorageError.from_err(err)
         return model
 
 

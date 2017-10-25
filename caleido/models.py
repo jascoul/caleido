@@ -144,6 +144,9 @@ class Actor(Base):
 
 class Account(Base):
     __tablename__ = 'accounts'
+    __table_args__ = (
+        UniqueConstraint('type', 'value'),)
+
 
     id = Column(Integer, Sequence('accounts_id_seq'), primary_key=True)
     actor_id = Column(Integer,

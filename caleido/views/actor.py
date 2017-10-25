@@ -5,6 +5,7 @@ from cornice.validators import colander_validator
 from caleido.models import Actor
 from caleido.resources import ResourceFactory, ActorResource
 
+from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            JsonMappingSchemaSerializerMixin,
@@ -55,7 +56,7 @@ class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     corporate_abbreviated_name = colander.SchemaNode(colander.String(),
                                                      missing=colander.drop)
 
-    @colander.instantiate(missing=[])
+    @colander.instantiate(missing=colander.drop)
     class accounts(colander.SequenceSchema):
         @colander.instantiate()
         class account(colander.MappingSchema):
@@ -128,7 +129,12 @@ class ActorAPI(object):
         body = self.request.validated
         body['id'] = int(self.request.matchdict['id'])
         self.context.model.update_dict(body)
-        self.context.put()
+        try:
+            self.context.put()
+        except StorageError as err:
+            self.request.errors.status = 400
+            self.request.errors.add('body', err.location, str(err))
+            return
         return ActorSchema().to_json(self.context.model.to_dict())
 
 
@@ -156,7 +162,13 @@ class ActorAPI(object):
     def collection_post(self):
         "Create a new Actor"
         actor = Actor.from_dict(self.request.validated)
-        self.context.put(actor)
+        try:
+            self.context.put(actor)
+        except StorageError as err:
+            self.request.errors.status = 400
+            self.request.errors.add('body', err.location, str(err))
+            return
+
         self.request.response.status = 201
         return ActorSchema().to_json(actor.to_dict())
 
