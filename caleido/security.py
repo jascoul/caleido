@@ -13,18 +13,24 @@ class BasicAuthenticator(object):
     def existing_user(self, userid):
         user = self.session.query(User).filter(User.userid==userid).first()
         return user is not None
-    
+
     def valid_user(self, userid, credentials):
         user = self.session.query(User).filter(User.userid==userid).first()
         if user is None or user.credentials != credentials:
             return False
         return True
-        
+
     def principals(self, userid):
         user = self.session.query(User).filter(User.userid==userid).first()
         if user is None:
             return []
-        return ['user:%s' % userid,
-                {100: 'group:admin',
-                 10: 'group:editor'}[user.user_group]]
-        
+        principals = ['user:%s' % userid,
+                      {100: 'group:admin',
+                       80: 'group:manager',
+                       60: 'group:editor',
+                       40: 'group:owner',
+                       10: 'group:viewer'}[user.user_group]]
+        for owner in user.owns:
+            if owner.actor_id:
+                principals.append('actor:%s' % owner.actor_id)
+        return principals

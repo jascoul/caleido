@@ -119,19 +119,20 @@ class Actor(Base):
         return result
 
     def update_dict(self, data):
-        new_accounts = set([(a['type'], a['value'])
-                            for a in data.pop('accounts', [])])
-        for account in self.accounts:
-            key = (account.type, account.value)
-            if key in new_accounts:
-                new_accounts.remove(key)
-            else:
-                self.accounts.remove(account)
-        for new_account in new_accounts:
-            type, value = new_account
-            self.accounts.append(Account(type=type,
-                                         value=value,
-                                         actor_id=data.get('id')))
+        if data.get('accounts') is not None:
+            new_accounts = set([(a['type'], a['value'])
+                                for a in data.pop('accounts', [])])
+            for account in self.accounts:
+                key = (account.type, account.value)
+                if key in new_accounts:
+                    new_accounts.remove(key)
+                else:
+                    self.accounts.remove(account)
+            for new_account in new_accounts:
+                type, value = new_account
+                self.accounts.append(Account(type=type,
+                                             value=value,
+                                             actor_id=data.get('id')))
 
         for key, value in data.items():
             set_attribute(self, key, value)
@@ -170,26 +171,54 @@ class User(Base):
     credentials = Column(PasswordType(schemes=['pbkdf2_sha512']),
                          nullable=False)
 
+    owns = relationship('Owner',
+                        back_populates='user',
+                        cascade='all, delete-orphan',
+                        lazy='joined')
 
     def to_dict(self):
-        return {'id': self.id,
-                'user_group': self.user_group,
-                'userid': self.userid,
-                'credentials': self.credentials.hash.decode('utf8')}
+        result = {'id': self.id,
+                  'user_group': self.user_group,
+                  'userid': self.userid,
+                  'credentials': self.credentials.hash.decode('utf8')}
+        result['owns'] = [{'actor_id': o.actor_id} for o in self.owns]
+        return result
+
+
+    def update_dict(self, data):
+        if data.get('owns') is not None:
+            new_owns = set([a['actor_id'] for a in data.pop('owns', [])])
+            for owner in self.owns:
+                key = owner.actor_id
+                if key in new_owns:
+                    new_owns.remove(key)
+                else:
+                    self.owns.remove(owner)
+            for actor_id in new_owns:
+                self.owns.append(Owner(actor_id=actor_id,
+                                       user_id=data.get('id')))
+        for key, value in data.items():
+            set_attribute(self, key, value)
 
     @classmethod
     def from_dict(cls, data):
-        return cls(**data)
+        user = User()
+        user.update_dict(data)
+        return user
 
 
 class Owner(Base):
     __tablename__ = 'owners'
     id = Column(Integer, Sequence('owners_id_seq'), primary_key=True)
+    user_id = Column(Integer,
+                     ForeignKey('users.id'),
+                     index=True,
+                     nullable=False)
+    user = relationship('User', back_populates='owns')
     actor_id = Column(Integer,
                       ForeignKey('actors.id'),
                       index=True,
                       nullable=False)
-    userid = Column(Unicode(128), index=True, nullable=False)
 
 
 class Group(Base):

@@ -187,6 +187,3 @@ class UserAuthWebTest(BaseTest):
                            headers={'Authorization': 'Bearer %s' % token})
         assert len(out.json['records']) == 1
         assert out.json['records'][0]['userid'] == 'user_4'
-
-
-

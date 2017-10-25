@@ -14,6 +14,11 @@ class UserSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     user_group = colander.SchemaNode(colander.Int())
     userid = colander.SchemaNode(colander.String())
     credentials = colander.SchemaNode(colander.String())
+    @colander.instantiate(missing=colander.drop)
+    class owns(colander.SequenceSchema):
+        @colander.instantiate()
+        class owner(colander.MappingSchema):
+            actor_id = colander.SchemaNode(colander.Integer())
 
 class UserResponseSchema(colander.MappingSchema,
                          JsonMappingSchemaSerializerMixin):

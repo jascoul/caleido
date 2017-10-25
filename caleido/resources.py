@@ -165,13 +165,12 @@ class ActorResource(BaseResource):
 
 
     def __acl__(self):
-        yield (Allow, 'group:admin', 'view')
-        yield (Allow, 'group:admin', 'add')
-        yield (Allow, 'group:admin', 'edit')
-        yield (Allow, 'group:admin', 'delete')
+        yield (Allow, 'group:admin', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:
-            # users can view their own info
-            yield (Allow, 'user:%s' % self.model.userid, 'view')
+            # owners can view and edit actors
+            yield (Allow, 'actor:%s' % self.model.id, ['view', 'edit'])
         elif self.model is None:
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
