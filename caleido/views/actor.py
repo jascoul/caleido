@@ -15,6 +15,12 @@ def deferred_actor_type_validator(node, kw):
     types = kw['repository'].type_config('actor_type')
     return colander.OneOf([t['key'] for t in types])
 
+@colander.deferred
+def deferred_account_type_validator(node, kw):
+    types = kw['repository'].type_config('account_type')
+    return colander.OneOf([t['key'] for t in types])
+
+
 def actor_validator(node, kw):
     if kw['type'] == 'individual':
         required_name_field = 'family_name'
@@ -29,8 +35,7 @@ class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
         kwargs['validator'] = actor_validator
         super(ActorSchema, self).__init__(*args, **kwargs)
 
-    id = colander.SchemaNode(colander.Int(),
-                             missing=colander.drop)
+    id = colander.SchemaNode(colander.Int())
     type = colander.SchemaNode(colander.String(),
                                validator=deferred_actor_type_validator)
     name = colander.SchemaNode(colander.String(),
@@ -49,6 +54,18 @@ class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                                 missing=colander.drop)
     corporate_abbreviated_name = colander.SchemaNode(colander.String(),
                                                      missing=colander.drop)
+
+    @colander.instantiate(missing=[])
+    class accounts(colander.SequenceSchema):
+        @colander.instantiate()
+        class account(colander.MappingSchema):
+            type = colander.SchemaNode(colander.String(),
+                                       validator=deferred_account_type_validator)
+            value = colander.SchemaNode(colander.String())
+
+class ActorPostSchema(ActorSchema):
+    # similar to actor schema, but id is optional
+    id = colander.SchemaNode(colander.Int(), missing=colander.drop)
 
 class ActorResponseSchema(colander.MappingSchema):
     body = ActorSchema()
@@ -108,7 +125,9 @@ class ActorAPI(object):
         })
     def put(self):
         "Modify an Actor"
-        self.context.model.update_dict(self.request.validated)
+        body = self.request.validated
+        body['id'] = int(self.request.matchdict['id'])
+        self.context.model.update_dict(body)
         self.context.put()
         return ActorSchema().to_json(self.context.model.to_dict())
 
@@ -126,7 +145,7 @@ class ActorAPI(object):
         return {'status': 'ok'}
 
     @view(permission='add',
-          schema=ActorSchema(),
+          schema=ActorPostSchema(),
           validators=(colander_bound_repository_body_validator,),
           response_schemas={
         '201': ActorResponseSchema(description='Created'),

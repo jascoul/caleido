@@ -14,7 +14,7 @@ from sqlalchemy.orm.attributes import instance_dict
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy_utils import DateRangeType, LtreeType, PasswordType
-
+from sqlalchemy.orm.attributes import set_attribute
 Base = declarative_base()
 
 class Kind(Base):
@@ -102,21 +102,45 @@ class Actor(Base):
     family_name_suffix = Column(Unicode(64))
 
     memberships = relationship('Membership', back_populates='actor')
-    accounts = relationship('Account', back_populates='actor')
+    accounts = relationship('Account',
+                            back_populates='actor',
+                            cascade='all, delete-orphan')
 
     def to_dict(self):
-        result = instance_dict(self)
-        if '_sa_instance_state' in result:
-            del result['_sa_instance_state']
+        result = {}
+        for prop in instance_dict(self):
+            if prop.startswith('_'):
+                continue
+            result[prop] = getattr(self, prop)
+
+        result['accounts'] = [{'type': a.type, 'value': a.value}
+                              for a in self.accounts]
+
         return result
 
     def update_dict(self, data):
+        new_accounts = set([(a['type'], a['value'])
+                            for a in data.pop('accounts', [])])
+        for account in self.accounts:
+            key = (account.type, account.value)
+            if key in new_accounts:
+                new_accounts.remove(key)
+            else:
+                self.accounts.remove(account)
+        for new_account in new_accounts:
+            type, value = new_account
+            self.accounts.append(Account(type=type,
+                                         value=value,
+                                         actor_id=data.get('id')))
+
         for key, value in data.items():
-            setattr(self, key, value)
+            set_attribute(self, key, value)
 
     @classmethod
     def from_dict(cls, data):
-        return cls(**data)
+        actor = Actor()
+        actor.update_dict(data)
+        return actor
 
 class Account(Base):
     __tablename__ = 'accounts'

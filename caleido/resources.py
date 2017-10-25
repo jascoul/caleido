@@ -38,7 +38,6 @@ class BaseResource(object):
         else:
             self.model = None
 
-
     def __acl__(self):
         return []
 

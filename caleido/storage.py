@@ -5,7 +5,10 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 import zope.sqlalchemy
 import transaction
 
-from caleido.models import Base, Repository, User, UserGroup, ActorType
+from caleido.models import (Base,
+                            Repository,
+                            User, UserGroup,
+                            ActorType, AccountType)
 
 DEFAULTS = {
     'user_groups': {100: 'Admin',
@@ -14,7 +17,9 @@ DEFAULTS = {
                     40: 'Owner',
                     10: 'Viewer'},
     'actor_types': {'individual': 'Individual',
-                    'organisation': 'Organisation'}
+                    'organisation': 'Organisation'},
+    'account_types': {'local': 'Local',
+                      'wikipedia': 'Wikipedia'}
     }
 
 class Storage(object):
@@ -77,6 +82,9 @@ class Storage(object):
         actor_types = DEFAULTS['actor_types']
         for key, label in actor_types.items():
             session.add(ActorType(key=key, label=label))
+        account_types = DEFAULTS['account_types']
+        for key, label in account_types.items():
+            session.add(AccountType(key=key, label=label))
         session.flush()
         session.execute('SET search_path TO public');
         session.flush()
@@ -112,7 +120,8 @@ def get_tm_session(session_factory, transaction_manager):
 REPOSITORY_CONFIG = {}
 
 class RepositoryConfig(object):
-    orm_table = {'actor_type': ActorType}
+    orm_table = {'actor_type': ActorType,
+                 'account_type': AccountType}
 
     def __init__(self, session, namespace, config_revision=0):
         self.session = session

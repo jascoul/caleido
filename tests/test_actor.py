@@ -12,7 +12,7 @@ class ActorWebTest(BaseTest):
         john_id = out.json['id']
         # Change Johns name to Johnny
         self.api.put_json('/api/v1/actors/%s' % john_id,
-                          {'family_name': 'Johnny', 'type': 'individual'},
+                          {'id': john_id, 'family_name': 'Johnny', 'type': 'individual'},
                           headers=headers,
                           status=200)
         out = self.api.get('/api/v1/actors/%s' % john_id,
@@ -37,7 +37,7 @@ class ActorWebTest(BaseTest):
         assert out.json['errors'][0]['description'].startswith(
             '"foobar" is not one of')
 
-    def test_individual_actor_name_generator(self):
+    def est_individual_actor_name_generator(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json('/api/v1/actors',
                                  {'family_name': 'Doe', 'type': 'individual'},
@@ -49,7 +49,8 @@ class ActorWebTest(BaseTest):
                           status=200)
         assert out.json['name'] == 'Doe'
         self.api.put_json('/api/v1/actors/%s' % john_id,
-                          {'family_name': 'Doe',
+                          {'id': john_id,
+                           'family_name': 'Doe',
                            'family_name_prefix': 'van der',
                            'given_name': 'John',
                            'initials': 'J.',
@@ -77,5 +78,34 @@ class ActorWebTest(BaseTest):
             headers=headers,
             status=201)
         assert out.json['name'] == out.json['corporate_international_name']
+
+    def test_adding_actor_accounts(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json(
+            '/api/v1/actors',
+            {'family_name': 'Doe',
+             'given_name': 'John',
+             'type': 'individual',
+             'accounts': [{'type': 'local', 'value': '1234'}]},
+             headers=headers,
+             status=201)
+        john_id = out.json['id']
+        assert out.json['accounts'] == [{'type': 'local', 'value': '1234'}]
+        out = self.api.get('/api/v1/actors/%s' % john_id,
+                           headers=headers)
+        assert out.json['accounts'] == [{'type': 'local', 'value': '1234'}]
+        out = self.api.put_json(
+            '/api/v1/actors/%s' % john_id,
+            {'id': john_id,
+             'family_name': 'Doe',
+             'given_name': 'John',
+             'type': 'individual',
+             'accounts': [{'type': 'local', 'value': 'XXXX'}]},
+             headers=headers,
+             status=200)
+        out = self.api.get('/api/v1/actors/%s' % john_id,
+                           headers=headers)
+        assert out.json['accounts'] == [{'type': 'local', 'value': 'XXXX'}]
+
 
 

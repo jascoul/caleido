@@ -10,22 +10,41 @@ ErrorStatus = colander.SchemaNode(colander.String(),
 
 class JsonMappingSchemaSerializerMixin(object):
     def to_json(self, appstruct):
+        def json_serialize(key, value, context):
+            if key is None:
+                node = context
+            else:
+                node = context.get(key)
+            if isinstance(node.typ, colander.String):
+                value = node.serialize(value)
+            elif isinstance(node.typ, colander.Sequence):
+                new_value = []
+                child_node = node.children[0]
+                for item in value:
+                    new_value.append(json_serialize(None, item, child_node))
+                value = new_value
+            elif isinstance(node.typ, colander.Mapping):
+                cstruct = {}
+                for item_key, item_value in value.items():
+                    if item_value is colander.null:
+                        continue
+                    cstruct[item_key] = json_serialize(
+                        item_key, item_value, node)
+                value = cstruct
+            elif isinstance(node.typ, colander.Integer):
+                value = int(node.serialize(value))
+            elif isinstance(node.typ, colander.Boolean):
+                value = node.serialize(value) == 'true'
+            else:
+                raise ValueError('Unsupported type: %s' % node.typ)
+            return value
+
         cstruct = {}
         for key, value in appstruct.items():
-            node = self.get(key)
             if value is colander.null:
                 continue
-            elif isinstance(node.typ, colander.String):
-                cstruct[key] = node.serialize(value)
-            elif isinstance(node.typ, colander.Integer):
-                cstruct[key] = int(node.serialize(value))
-            elif isinstance(node.typ, colander.Boolean):
-                cstruct[key] = node.serialize(value) == 'true'
-            else:
-                cstruct[key] = node.serialize(value) == 'true'
-                raise ValueError('Unsupported type: %s' % node.typ)
+            cstruct[key] = json_serialize(key, value, self)
         return cstruct
-
 
 
 class ErrorResponseSchema(colander.MappingSchema):
