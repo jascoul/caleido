@@ -84,7 +84,7 @@ class UserAuthWebTest(BaseTest):
                            self.app_settings()['caleido.secret'],
                            algorithm='HS512').decode('utf8')
         # now let's try to retrieve the admin user, it should result in 403
-        self.api.get('/api/v1/users/1',
+        self.api.get('/api/v1/user/records/1',
                      headers={'Authorization': 'Bearer %s' % token},
                      status=403)
         # we can't renew the token, because it is expired
@@ -101,19 +101,19 @@ class UserAuthWebTest(BaseTest):
         decoded_token = jwt.decode(token, verify=False)
         assert decoded_token['exp'] > old_expiration
         # now we should be able to retrieve the user
-        out = self.api.get('/api/v1/users/1',
+        out = self.api.get('/api/v1/user/records/1',
                            headers={'Authorization': 'Bearer %s' % token})
 
     def test_retreiving_user_info(self):
         # we must be logged in as an admin user to retrieve users
-        out = self.api.get('/api/v1/users/1', status=401)
+        out = self.api.get('/api/v1/user/records/1', status=401)
         assert out.headers['Location'].endswith('/api/v1/auth/login')
         # first get an auth token
         out = self.api.post_json('/api/v1/auth/login',
                                  {'user': 'admin', 'password': 'admin'})
         token = out.json['token']
         # now we can retrive the user info
-        out = self.api.get('/api/v1/users/1',
+        out = self.api.get('/api/v1/user/records/1',
                            headers={'Authorization': 'Bearer %s' % token})
         assert out.json['userid'] == 'admin'
         assert out.json['credentials'].startswith('$pbkdf2-sha512')
@@ -124,7 +124,7 @@ class UserAuthWebTest(BaseTest):
             '/api/v1/auth/login',
             {'user': 'admin', 'password': 'admin'}).json['token']
 
-        out = self.api.post_json('/api/v1/users',
+        out = self.api.post_json('/api/v1/user/records',
                                  {'userid': 'john',
                                   'credentials': 'j0hn',
                                   'user_group': 10},
@@ -137,7 +137,7 @@ class UserAuthWebTest(BaseTest):
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'john', 'password': 'j0hn'}).json['token']
-        self.api.post_json('/api/v1/users',
+        self.api.post_json('/api/v1/user/records',
                            {'userid': 'pete',
                             'credentials': 'p3t3',
                             'user_group': 10},
@@ -148,16 +148,16 @@ class UserAuthWebTest(BaseTest):
         # first add a user
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json(
-            '/api/v1/users',
+            '/api/v1/user/records',
             {'userid': 'john', 'credentials': 'j0hn', 'user_group': 10},
             headers=headers)
         john_id = out.json['id']
         # remove the user
-        self.api.delete('/api/v1/users/%s' % john_id,
+        self.api.delete('/api/v1/user/records/%s' % john_id,
                         headers=headers,
                         status=200)
         # user gone
-        self.api.get('/api/v1/users/%s' % john_id,
+        self.api.get('/api/v1/user/records/%s' % john_id,
                      headers=headers,
                      status=404)
 
@@ -172,18 +172,18 @@ class UserAuthWebTest(BaseTest):
         session.flush()
         transaction.commit()
         # admin user can retrieve all users
-        out = self.api.get('/api/v1/users?limit=10', headers=headers)
+        out = self.api.get('/api/v1/user/records?limit=10', headers=headers)
         assert len(out.json['records']) == 10
         assert out.json['total'] == 13
         # lets retrieve the next page with the remaining users
-        out = self.api.get('/api/v1/users?offset=10', headers=headers)
+        out = self.api.get('/api/v1/user/records?offset=10', headers=headers)
         assert len(out.json['records']) == 3
         assert out.json['total'] == 13
         # non admin users can only retrieve themselves
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'user_4', 'password': 'user_4'}).json['token']
-        out = self.api.get('/api/v1/users',
+        out = self.api.get('/api/v1/user/records',
                            headers={'Authorization': 'Bearer %s' % token})
         assert len(out.json['records']) == 1
         assert out.json['records'][0]['userid'] == 'user_4'

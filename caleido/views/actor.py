@@ -94,8 +94,8 @@ class ActorListingRequestSchema(colander.MappingSchema):
                                     missing=20)
 
 @resource(name='Actor',
-          collection_path='/api/v1/actors',
-          path='/api/v1/actors/{id}',
+          collection_path='/api/v1/actor/records',
+          path='/api/v1/actor/records/{id}',
           tags=['actor'],
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(ActorResource))

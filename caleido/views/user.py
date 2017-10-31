@@ -47,8 +47,8 @@ class UserListingRequestSchema(colander.MappingSchema):
                                     missing=20)
 
 @resource(name='User',
-          collection_path='/api/v1/users',
-          path='/api/v1/users/{id}',
+          collection_path='/api/v1/user/records',
+          path='/api/v1/user/records/{id}',
           tags=['user'],
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(UserResource))
