@@ -1,6 +1,7 @@
 import colander
 from cornice.resource import resource, view
 from cornice.validators import colander_validator
+from cornice import Service
 
 from caleido.models import Actor
 from caleido.resources import ResourceFactory, ActorResource
@@ -8,7 +9,9 @@ from caleido.resources import ResourceFactory, ActorResource
 from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
+                           OKStatusResponseSchema,
                            JsonMappingSchemaSerializerMixin,
+                           colander_bound_repository_validator,
                            colander_bound_repository_body_validator)
 
 @colander.deferred
@@ -93,13 +96,18 @@ class ActorListingRequestSchema(colander.MappingSchema):
                                     validator=colander.Range(0, 100),
                                     missing=20)
 
+class ActorBulkRequestSchema(colander.MappingSchema):
+    @colander.instantiate()
+    class records(colander.SequenceSchema):
+        actor = ActorSchema()
+
 @resource(name='Actor',
           collection_path='/api/v1/actor/records',
           path='/api/v1/actor/records/{id}',
           tags=['actor'],
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(ActorResource))
-class ActorAPI(object):
+class ActorRecordAPI(object):
     def __init__(self, request, context):
         self.request = request
         self.context = context
@@ -194,3 +202,32 @@ class ActorAPI(object):
                 'limit': limit,
                 'offset': offset}
 
+actor_bulk = Service(name='ActorBulk',
+                     path='/api/v1/actor/bulk',
+                     factory=ResourceFactory(ActorResource),
+                     api_security=[{'jwt':[]}],
+                     tags=['actor'],
+                     cors_origins=('*', ),
+                     schema=ActorBulkRequestSchema(),
+                     validators=(colander_bound_repository_body_validator,),
+                     response_schemas={
+    '200': OKStatusResponseSchema(description='Ok'),
+    '400': ErrorResponseSchema(description='Bad Request'),
+    '401': ErrorResponseSchema(description='Unauthorized')})
+
+@actor_bulk.post(permission='import')
+def actor_bulk_import_view(request):
+    # get existing resources from submitted bulk
+    keys = [r['id'] for r in request.validated['records'] if r.get('id')]
+    existing_records = {r.id:r for r in request.context.get_many(keys) if r}
+    models = []
+    for record in request.validated['records']:
+        if record['id'] in existing_records:
+            model = existing_records[record['id']]
+            model.update_dict(record)
+        else:
+            model = request.context.orm_class.from_dict(record)
+        models.append(model)
+    models = request.context.put_many(models)
+    request.response.status = 201
+    return {'status': 'ok'}

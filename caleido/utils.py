@@ -1,6 +1,6 @@
 import colander
 
-from cornice.validators import colander_body_validator
+from cornice.validators import colander_validator, colander_body_validator
 
 
 OKStatus = colander.SchemaNode(colander.String(),
@@ -60,13 +60,29 @@ class ErrorResponseSchema(colander.MappingSchema):
         status = ErrorStatus
 
 
+class OKStatusResponseSchema(colander.MappingSchema):
+    @colander.instantiate()
+    class body(colander.MappingSchema):
+        status = OKStatus
+
 class StatusResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
         status = ErrorStatus
 
-def colander_bound_repository_body_validator(
+def colander_bound_repository_validator(
     request, schema=None, deserializer=None, **kwargs):
+    return colander_bound_repository_body_validator(request,
+                                                    schema=schema,
+                                                    deserializer=deserializer,
+                                                    validator=colander_validator,
+                                                    **kwargs)
+
+def colander_bound_repository_body_validator(request,
+                                             schema=None,
+                                             deserializer=None,
+                                             validator=colander_body_validator,
+                                             **kwargs):
     if schema:
         schema = schema.bind(repository=request.repository)
     for method in kwargs.get('response_schemas', {}):

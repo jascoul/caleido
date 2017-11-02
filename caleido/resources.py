@@ -1,7 +1,7 @@
 import math
 
 from pyramid.httpexceptions import HTTPForbidden
-from pyramid.security import Allow
+from pyramid.security import Allow, ALL_PERMISSIONS
 from pyramid.interfaces import IAuthorizationPolicy
 from sqlalchemy_utils.functions import get_primary_keys
 from sqlalchemy.orm import load_only
@@ -45,50 +45,75 @@ class BaseResource(object):
 
 
     def get(self, key=None, principals=None):
-        if key:
-            model = self.session.query(self.orm_class).filter(
-                getattr(self.orm_class,
-                        self.key_col_name) == key).first()
-        else:
-            model = self.model
-        if model and principals:
-            if not self.is_permitted(model, principals, 'view'):
+        if key is None:
+            if principals and self.model and not self.is_permitted(self.model,
+                                                                   principals,
+                                                                   'view'):
                 return None
-        return model
-
+            return self.model
+        return self.get_many([key], principals=principals)[0]
 
     def get_many(self, keys, principals=None):
-        raise NotImplemented()
+        """
+        Retrieve multiple models for a list of keys.
+
+        Note that this method always returns the same number of
+        models as the number of keys in the same order.
+        Models can be None if not found, or if principals are specified
+        and the model view is not permitted.
+        """
+
+        pkey_col = getattr(self.orm_class, self.key_col_name)
+        keys = [int(k) for k in keys]
+        models_by_id = {getattr(r, self.key_col_name): r for r in
+                        self.session.query(self.orm_class).filter(
+            pkey_col.in_(keys)).all()}
+        models = []
+        for key in keys:
+            model = models_by_id.get(key)
+            if model is None:
+                models.append(None)
+            elif principals and not self.is_permitted(model,
+                                                      principals,
+                                                      'view'):
+                raise HTTPForbidden(
+                    'Failed ACL check: permission "view" on %s %s' % (
+                    self.orm_class.__name__, key))
+            else:
+                models.append(model)
+        return models
 
 
     def pre_put_hook(self, model):
         return model
+
 
     def put(self, model=None, principals=None):
         if model is None:
             if self.model is None:
                 raise ValueError('No model to put')
             model = self.model
-        key = getattr(model, self.key_col_name)
-        if key is None:
-            permission = 'add'
-        else:
-            permission = 'edit'
-        model = self.pre_put_hook(model)
-        self.session.add(model)
-        if principals and not self.is_permitted(
-            model, principals, permission):
-            raise HTTPForbidden('Failed ACL check for permission "%s"' % permission)
+        return self.put_many([model], principals=principals)[0]
+
+
+    def put_many(self, models, principals=None):
+        for model in models:
+            key = getattr(model, self.key_col_name)
+            if key is None:
+                permission = 'add'
+            else:
+                permission = 'edit'
+            model = self.pre_put_hook(model)
+            self.session.add(model)
+            if principals and not self.is_permitted(
+                model, principals, permission):
+                raise HTTPForbidden('Failed ACL check: permission "%s" on %s %s' % (
+                    permission, self.orm_class.__name__, key))
         try:
             self.session.flush()
         except sqlalchemy.exc.IntegrityError as err:
             raise StorageError.from_err(err)
-        return model
-
-
-    def put_many(self, models, principals=None):
-        raise NotImplemented()
-
+        return models
 
     def delete(self, model=None, principals=None):
         if model is None:
@@ -135,10 +160,7 @@ class UserResource(BaseResource):
 
 
     def __acl__(self):
-        yield (Allow, 'group:admin', 'view')
-        yield (Allow, 'group:admin', 'add')
-        yield (Allow, 'group:admin', 'edit')
-        yield (Allow, 'group:admin', 'delete')
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
         if self.model:
             # users can view their own info
             yield (Allow, 'user:%s' % self.model.userid, 'view')
@@ -165,7 +187,7 @@ class ActorResource(BaseResource):
 
 
     def __acl__(self):
-        yield (Allow, 'group:admin', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
         yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:

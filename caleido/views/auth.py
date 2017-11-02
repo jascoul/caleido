@@ -28,14 +28,14 @@ class AuthLoggedInBodySchema(colander.MappingSchema):
 
 login = Service(name='login',
                 path='/api/v1/auth/login',
-                schema=AuthLoginSchema(),
                 validators=(colander_body_validator,),
                 factory=authenticator_factory,
+                cors_origins=('*', ),
                 response_schemas={
         '20O': AuthLoggedInBodySchema(description='Ok'),
         '400': ErrorResponseSchema(description='Bad Request'),
         '401': ErrorResponseSchema(description='Unauthorized')})
-@login.post(tags=['auth'])
+@login.post(tags=['auth'], schema=AuthLoginSchema())
 def login_view(request):
     user_id = request.validated['user']
     credentials = request.validated['password']
@@ -47,16 +47,18 @@ def login_view(request):
 
     return result
 
+
+
 renew = Service(name='renew',
                 path='/api/v1/auth/renew',
-                schema=AuthRenewSchema(),
                 validators=(colander_body_validator,),
                 factory=authenticator_factory,
+                cors_origins=('*', ),
                 response_schemas={
     '20O': AuthLoggedInBodySchema(description='Ok'),
     '400': ErrorResponseSchema(description='Bad Request'),
     '401': ErrorResponseSchema(description='Unauthorized')})
-@renew.post(tags=['auth'])
+@renew.post(tags=['auth'], schema=AuthRenewSchema())
 def renew_view(request):
     token = request.validated['token']
     policy = request.registry.queryUtility(IAuthenticationPolicy)

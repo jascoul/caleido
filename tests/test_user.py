@@ -36,8 +36,8 @@ class UserAuthTest(BaseTest):
         session = self.storage.make_session(namespace='unittest')
         context = UserResource(self.storage.registry, session)
         # let's try to retrieve the admin user as user john
-        user = context.get(1, principals=['user:john'])
-        assert user is None
+        with pytest.raises(HTTPForbidden):
+            context.get(1, principals=['user:john'])
         # create user john as editor
         john = context.put(
             User(userid='john', credentials='j0hn', user_group=10),

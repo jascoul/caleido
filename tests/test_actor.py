@@ -264,4 +264,35 @@ class ActorAuthorzationWebTest(BaseTest):
             '/api/v1/actor/records/%s' % actor_id,
              headers=john_headers, status=403)
 
+    def test_actor_bulk_import(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        records = {'records': [
+            {'id': 1,
+             'family_name': 'Doe',
+             'given_name': 'John',
+             'type': 'individual',
+             'accounts': [{'type': 'local', 'value': '123'}]},
+            {'id': 2,
+             'family_name': 'Doe',
+             'given_name': 'Jane',
+             'type': 'individual',
+             'accounts': [{'type': 'local', 'value': '345'}]}
+             ]}
+        # bulk add records
+        out = self.api.post_json('/api/v1/actor/bulk',
+                                 records,
+                                 headers=headers,
+                                 status=201)
+        assert out.json['status'] == 'ok'
+        out = self.api.get('/api/v1/actor/records/2', headers=headers)
+        assert out.json['given_name'] == 'Jane'
+        records['records'][1]['initials'] = 'J.'
+        # bulk update records
+        out = self.api.post_json('/api/v1/actor/bulk',
+                                 records,
+                                 headers=headers,
+                                 status=201)
+        assert out.json['status'] == 'ok'
+        out = self.api.get('/api/v1/actor/records/2', headers=headers)
+        assert out.json['initials'] == 'J.'
 
