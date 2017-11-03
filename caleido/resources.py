@@ -97,6 +97,8 @@ class BaseResource(object):
 
 
     def put_many(self, models, principals=None):
+        if not models:
+            return
         for model in models:
             key = getattr(model, self.key_col_name)
             if key is None:
@@ -131,12 +133,17 @@ class BaseResource(object):
                principals=None,
                limit=100,
                offset=0,
+               order_by=None,
                keys_only=False):
         query = self.session.query(self.orm_class)
+        order_by = order_by or []
+        if not isinstance(order_by, list):
+            order_by = [order_by]
+
         for filter in self.acl_filters(principals) + (filters or []):
             query = query.filter(filter)
         total = query.count()
-        query = query.offset(offset).limit(limit)
+        query = query.order_by(*order_by).offset(offset).limit(limit)
         if keys_only:
             query = query.options(load_only(self.key_col_name))
         return {'total': total,

@@ -26,7 +26,7 @@ class JsonMappingSchemaSerializerMixin(object):
             elif isinstance(node.typ, colander.Mapping):
                 cstruct = {}
                 for item_key, item_value in value.items():
-                    if item_value is colander.null:
+                    if item_value is None or colander.null:
                         continue
                     cstruct[item_key] = json_serialize(
                         item_key, item_value, node)
@@ -41,7 +41,7 @@ class JsonMappingSchemaSerializerMixin(object):
 
         cstruct = {}
         for key, value in appstruct.items():
-            if value is colander.null:
+            if value is None or colander.null:
                 continue
             cstruct[key] = json_serialize(key, value, self)
         return cstruct

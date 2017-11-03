@@ -184,6 +184,7 @@ class ActorRecordAPI(object):
     @view(permission='view',
           schema=ActorListingRequestSchema(),
           validators=(colander_validator),
+          cors_origins=('*', ),
           response_schemas={
         '200': ActorListingResponseSchema(description='Ok'),
         '400': ErrorResponseSchema(description='Bad Request'),
@@ -191,9 +192,11 @@ class ActorRecordAPI(object):
     def collection_get(self):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
+        order_by = [Actor.family_name.asc(), Actor.name.asc()]
         listing = self.context.search(
             offset=offset,
             limit=limit,
+            order_by=order_by,
             principals=self.request.effective_principals)
         schema = ActorSchema()
         return {'total': listing['total'],
