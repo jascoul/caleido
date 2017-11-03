@@ -217,13 +217,44 @@ class PersonResource(BaseResource):
 
     def acl_filters(self, principals):
         filters = []
-        if 'group:admin' in principals:
-            return filters
-        # only return the user object of logged in user
-        user_ids = [
-            p.split(':', 1)[1] for p in principals if p.startswith('user:')]
-        for user_id in user_ids:
-            filters.append(User.userid == user_id)
+        for principal in principals:
+            if principal in {'group:admin',
+                             'group:manager',
+                             'group:editor'}:
+                return []
+            if principals.startswith('owner:person:'):
+                filters.append(Person.person_id == principal.split(':')[-1])
+        return filters
+
+class GroupResource(BaseResource):
+    orm_class = Group
+    key_col_name = 'id'
+
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
+        if self.model:
+            # owners can view and edit groups
+            yield (Allow, 'owner:group:%s' % self.model.id, ['view', 'edit'])
+        elif self.model is None:
+            # no model loaded yet, allow container view
+            yield (Allow, 'system.Authenticated', 'view')
+
+    def pre_put_hook(self, model):
+        model.name = model.international_name
+        return model
+
+    def acl_filters(self, principals):
+        filters = []
+        for principal in principals:
+            if principal in {'group:admin',
+                             'group:manager',
+                             'group:editor'}:
+                return []
+            if principals.startswith('owner:group:'):
+                filters.append(Group.group_id == principal.split(':')[-1])
         return filters
 
 

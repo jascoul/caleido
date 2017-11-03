@@ -184,7 +184,7 @@ class Group(Base):
     type = Column(Unicode(32),
                   ForeignKey('group_type_schemes.key'),
                   nullable=False)
-    name = Column(Unicode(128), nullable=False)
+    name = Column(Unicode(256), nullable=False)
     international_name = Column(Unicode(256))
     native_name = Column(Unicode(256))
     abbreviated_name = Column(Unicode(128))
@@ -264,10 +264,11 @@ class User(Base):
 
     def update_dict(self, data):
         if data.get('owns') is not None:
-            owned_person_ids = {o['person_id'] for o in data.pop('owns', [])
-                                    if o.get('person_id')}
-            owned_group_ids = {o['group_id'] for o in data.pop('owns', [])
-                               if o.get('group_id')}
+            owns = data.pop('owns', [])
+            owned_person_ids = {
+                o['person_id'] for o in owns if o.get('person_id')}
+            owned_group_ids = {
+                o['group_id'] for o in owns if o.get('group_id')}
             for owner in self.owns:
                 if owner.person_id and owner.person_id in owned_person_ids:
                     owned_person_ids.remove(owner.person_id)
@@ -281,6 +282,7 @@ class User(Base):
             for group_id in owned_group_ids:
                 self.owns.append(Owner(group_id=group_id,
                                        user_id=data.get('id')))
+
         for key, value in data.items():
             set_attribute(self, key, value)
 
