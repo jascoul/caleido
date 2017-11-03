@@ -31,6 +31,8 @@ class BasicAuthenticator(object):
                        40: 'group:owner',
                        10: 'group:viewer'}[user.user_group]]
         for owner in user.owns:
-            if owner.actor_id:
-                principals.append('actor:%s' % owner.actor_id)
+            if owner.person_id:
+                principals.append('owner:person:%s' % owner.person_id)
+            elif owner.group_id:
+                principals.append('owner:group:%s' % owner.group_id)
         return principals

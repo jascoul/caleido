@@ -7,7 +7,7 @@ from sqlalchemy_utils.functions import get_primary_keys
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import transaction
-from caleido.models import User, Actor, ActorType
+from caleido.models import User, Person, Group, GroupType
 from caleido.exceptions import StorageError
 
 class ResourceFactory(object):
@@ -188,8 +188,8 @@ class UserResource(BaseResource):
         return filters
 
 
-class ActorResource(BaseResource):
-    orm_class = Actor
+class PersonResource(BaseResource):
+    orm_class = Person
     key_col_name = 'id'
 
 
@@ -198,26 +198,21 @@ class ActorResource(BaseResource):
         yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:
-            # owners can view and edit actors
-            yield (Allow, 'actor:%s' % self.model.id, ['view', 'edit'])
+            # owners can view and edit persons
+            yield (Allow, 'owner:person:%s' % self.model.id, ['view', 'edit'])
         elif self.model is None:
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
 
     def pre_put_hook(self, model):
-        if model.type == 'individual':
-            name = model.family_name
-            if model.family_name_prefix:
-                name = '%s %s' % (model.family_name_prefix, name)
-            if model.family_name_suffix:
-                name = '%s %s' % (name, model.family_name_suffix)
-            if model.initials:
-                name = '%s, %s' % (name, model.initials)
-            if model.given_name:
-                name = '%s (%s)' % (name, model.given_name)
-            model.name = name
-        else:
-            model.name = model.corporate_international_name
+        name = model.family_name
+        if model.family_name_prefix:
+            name = '%s %s' % (model.family_name_prefix, name)
+        if model.initials:
+            name = '%s, %s' % (name, model.initials)
+        if model.given_name:
+            name = '%s (%s)' % (name, model.given_name)
+        model.name = name
         return model
 
     def acl_filters(self, principals):
@@ -233,7 +228,7 @@ class ActorResource(BaseResource):
 
 
 class TypeResource(object):
-    schemes = {'actor': ActorType}
+    schemes = {'group': GroupType}
     orm = None
 
     def __acl__(self):

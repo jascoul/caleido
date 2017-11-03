@@ -7,7 +7,8 @@ from sqlalchemy import (
     Sequence,
     ForeignKey,
     ForeignKeyConstraint,
-    UniqueConstraint
+    UniqueConstraint,
+    CheckConstraint
     )
 from sqlalchemy.orm import relationship, configure_mappers
 from sqlalchemy.orm.attributes import instance_dict
@@ -33,22 +34,12 @@ class WorkType(Base):
     label = Column(Unicode(128))
 
 
-class ActorType(Base):
-    __tablename__ = 'actor_type_schemes'
-    key = Column(Unicode(32), primary_key=True)
-    label = Column(Unicode(128))
-
 
 class UserGroup(Base):
     __tablename__ = 'user_groups'
     id = Column(Integer(), primary_key=True)
     label = Column(Unicode(128))
 
-
-class AccountType(Base):
-    __tablename__ = 'account_type_schemes'
-    key = Column(Unicode(32), primary_key=True)
-    label = Column(Unicode(128))
 
 
 class ContributorRole(Base):
@@ -83,27 +74,20 @@ class Work(Base):
                                 collection_class=ordering_list('position'))
 
 
+class Person(Base):
+    __tablename__ = 'persons'
 
-class Actor(Base):
-    __tablename__ = 'actors'
-
-    id = Column(Integer, Sequence('works_id_seq'), primary_key=True)
-    type = Column(Unicode(32),
-                  ForeignKey('actor_type_schemes.key'),
-                  nullable=False)
+    id = Column(Integer, Sequence('person_id_seq'), primary_key=True)
     name = Column(Unicode(128), nullable=False)
-    corporate_international_name = Column(Unicode(256))
-    corporate_native_name = Column(Unicode(256))
-    corporate_abbreviated_name = Column(Unicode(128))
     family_name = Column(Unicode(128))
     given_name = Column(Unicode(128))
     initials = Column(Unicode(32))
     family_name_prefix = Column(Unicode(64))
-    family_name_suffix = Column(Unicode(64))
+    honorary = Column(Unicode(64))
 
-    memberships = relationship('Membership', back_populates='actor')
-    accounts = relationship('Account',
-                            back_populates='actor',
+    memberships = relationship('Membership', back_populates='person')
+    accounts = relationship('PersonAccount',
+                            back_populates='person',
                             cascade='all, delete-orphan')
 
     def to_dict(self):
@@ -130,35 +114,122 @@ class Actor(Base):
                     self.accounts.remove(account)
             for new_account in new_accounts:
                 type, value = new_account
-                self.accounts.append(Account(type=type,
-                                             value=value,
-                                             actor_id=data.get('id')))
+                self.accounts.append(PersonAccount(type=type,
+                                                   value=value,
+                                                   person_id=data.get('id')))
 
         for key, value in data.items():
             set_attribute(self, key, value)
 
     @classmethod
     def from_dict(cls, data):
-        actor = Actor()
-        actor.update_dict(data)
-        return actor
+        person = Person()
+        person.update_dict(data)
+        return person
 
-class Account(Base):
-    __tablename__ = 'accounts'
+class PersonAccountType(Base):
+    __tablename__ = 'person_account_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class PersonAccount(Base):
+    __tablename__ = 'person_accounts'
     __table_args__ = (
         UniqueConstraint('type', 'value'),)
 
 
-    id = Column(Integer, Sequence('accounts_id_seq'), primary_key=True)
-    actor_id = Column(Integer,
-                      ForeignKey('actors.id'),
+    id = Column(Integer, Sequence('person_accounts_id_seq'), primary_key=True)
+    person_id = Column(Integer,
+                      ForeignKey('persons.id'),
                       index=True,
                       nullable=False)
-    actor = relationship('Actor', back_populates='accounts')
+    person = relationship('Person', back_populates='accounts')
     type = Column(Unicode(32),
-                  ForeignKey('account_type_schemes.key'),
+                  ForeignKey('person_account_type_schemes.key'),
                   nullable=False)
     value = Column(Unicode(128), nullable=False)
+
+
+class GroupType(Base):
+    __tablename__ = 'group_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class GroupAccountType(Base):
+    __tablename__ = 'group_account_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class GroupAccount(Base):
+    __tablename__ = 'group_accounts'
+    __table_args__ = (
+        UniqueConstraint('type', 'value'),)
+
+
+    id = Column(Integer, Sequence('group_accounts_id_seq'), primary_key=True)
+    group_id = Column(Integer,
+                      ForeignKey('groups.id'),
+                      index=True,
+                      nullable=False)
+    group = relationship('Group', back_populates='accounts')
+    type = Column(Unicode(32),
+                  ForeignKey('group_account_type_schemes.key'),
+                  nullable=False)
+    value = Column(Unicode(128), nullable=False)
+
+class Group(Base):
+    __tablename__ = 'groups'
+
+    id = Column(Integer, Sequence('group_id_seq'), primary_key=True)
+    type = Column(Unicode(32),
+                  ForeignKey('group_type_schemes.key'),
+                  nullable=False)
+    name = Column(Unicode(128), nullable=False)
+    international_name = Column(Unicode(256))
+    native_name = Column(Unicode(256))
+    abbreviated_name = Column(Unicode(128))
+
+    members = relationship('Membership', back_populates='group')
+    accounts = relationship('GroupAccount',
+                            back_populates='group',
+                            cascade='all, delete-orphan')
+
+    def to_dict(self):
+        result = {}
+        for prop in instance_dict(self):
+            if prop.startswith('_'):
+                continue
+            result[prop] = getattr(self, prop)
+
+        result['accounts'] = [{'type': a.type, 'value': a.value}
+                              for a in self.accounts]
+
+        return result
+
+    def update_dict(self, data):
+        if data.get('accounts') is not None:
+            new_accounts = set([(a['type'], a['value'])
+                                for a in data.pop('accounts', [])])
+            for account in self.accounts:
+                key = (account.type, account.value)
+                if key in new_accounts:
+                    new_accounts.remove(key)
+                else:
+                    self.accounts.remove(account)
+            for new_account in new_accounts:
+                type, value = new_account
+                self.accounts.append(GroupAccount(type=type,
+                                                  value=value,
+                                                  group_id=data.get('id')))
+
+        for key, value in data.items():
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        group = Group()
+        group.update_dict(data)
+        return group
 
 
 class User(Base):
@@ -181,21 +252,34 @@ class User(Base):
                   'user_group': self.user_group,
                   'userid': self.userid,
                   'credentials': self.credentials.hash.decode('utf8')}
-        result['owns'] = [{'actor_id': o.actor_id} for o in self.owns]
+        for owner in self.owns:
+            if owner.person_id:
+                result.setdefault('owns', []).append(
+                    {'person_id': owner.person_id})
+            elif owner.group_id:
+                result.setdefault('owns', []).append(
+                    {'group_id': owner.group_id})
         return result
 
 
     def update_dict(self, data):
         if data.get('owns') is not None:
-            new_owns = set([a['actor_id'] for a in data.pop('owns', [])])
+            owned_person_ids = {o['person_id'] for o in data.pop('owns', [])
+                                    if o.get('person_id')}
+            owned_group_ids = {o['group_id'] for o in data.pop('owns', [])
+                               if o.get('group_id')}
             for owner in self.owns:
-                key = owner.actor_id
-                if key in new_owns:
-                    new_owns.remove(key)
+                if owner.person_id and owner.person_id in owned_person_ids:
+                    owned_person_ids.remove(owner.person_id)
+                elif owner.group_id and owner.group_id in owned_group_ids:
+                    owned_group_ids.remove(owner.group_id)
                 else:
                     self.owns.remove(owner)
-            for actor_id in new_owns:
-                self.owns.append(Owner(actor_id=actor_id,
+            for person_id in owned_person_ids:
+                self.owns.append(Owner(person_id=person_id,
+                                       user_id=data.get('id')))
+            for group_id in owned_group_ids:
+                self.owns.append(Owner(group_id=group_id,
                                        user_id=data.get('id')))
         for key, value in data.items():
             set_attribute(self, key, value)
@@ -209,32 +293,35 @@ class User(Base):
 
 class Owner(Base):
     __tablename__ = 'owners'
+    __table_args__ = (
+        CheckConstraint('NOT(person_id IS NULL AND group_id IS NULL)',
+                        name='owner_check_person_or_group_id_required'),
+                        )
     id = Column(Integer, Sequence('owners_id_seq'), primary_key=True)
     user_id = Column(Integer,
                      ForeignKey('users.id'),
                      index=True,
                      nullable=False)
     user = relationship('User', back_populates='owns')
-    actor_id = Column(Integer,
-                      ForeignKey('actors.id'),
-                      index=True,
-                      nullable=False)
-
-
-class Group(Base):
-    __tablename__ = 'groups'
-    id = Column(Integer, ForeignKey('actors.id'), primary_key=True)
-    path = Column(LtreeType, nullable=False)
+    person_id = Column(Integer,
+                       ForeignKey('persons.id'),
+                       index=True)
+    group_id = Column(Integer,
+                      ForeignKey('groups.id'),
+                      index=True)
 
 
 class Membership(Base):
     __tablename__ = 'memberships'
     id = Column(Integer, Sequence('memberships_id_seq'), primary_key=True)
-    actor_id = Column(Integer, ForeignKey('actors.id'), index=True, nullable=False)
-    actor = relationship('Actor', back_populates='memberships')
+    person_id = Column(Integer, ForeignKey('persons.id'), index=True, nullable=False)
+    person = relationship('Person', back_populates='memberships')
 
     group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=False)
+    group = relationship('Group', back_populates='members')
+
     during = Column(DateRangeType)
+    provenance = Column(Unicode(1024))
 
 
 class Contributor(Base):
@@ -255,7 +342,8 @@ class Contributor(Base):
     work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
     work = relationship('Work', back_populates='contributors')
 
-    actor_id = Column(Integer, ForeignKey('actors.id'), index=True, nullable=False)
+    person_id = Column(Integer, ForeignKey('persons.id'), index=True, nullable=False)
+    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=False)
     position = Column(Integer)
 
 class Repository(Base):

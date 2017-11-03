@@ -3,61 +3,43 @@ from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Actor
-from caleido.resources import ResourceFactory, ActorResource
+from caleido.models import Person
+from caleido.resources import ResourceFactory, PersonResource
 
 from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            OKStatusResponseSchema,
                            JsonMappingSchemaSerializerMixin,
-                           colander_bound_repository_validator,
                            colander_bound_repository_body_validator)
 
 @colander.deferred
-def deferred_actor_type_validator(node, kw):
-    types = kw['repository'].type_config('actor_type')
-    return colander.OneOf([t['key'] for t in types])
-
-@colander.deferred
 def deferred_account_type_validator(node, kw):
-    types = kw['repository'].type_config('account_type')
+    types = kw['repository'].type_config('person_account_type')
     return colander.OneOf([t['key'] for t in types])
 
 
-def actor_validator(node, kw):
-    if kw['type'] == 'individual':
-        required_name_field = 'family_name'
-    else:
-        required_name_field = 'corporate_international_name'
-    if not kw.get(required_name_field):
-        node.name = '%s.%s' % (node.name, required_name_field)
-        raise colander.Invalid(node, node.get(required_name_field).missing_msg)
+def person_validator(node, kw):
+    if not kw.get('given_name') and not kw.get('initials'):
+        node.name = '%s.initials' % node.name
+        raise colander.Invalid(
+            node, "Required: supply one of 'initials' or 'given_name'")
 
-class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
+class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     def __init__(self, *args, **kwargs):
-        kwargs['validator'] = actor_validator
-        super(ActorSchema, self).__init__(*args, **kwargs)
+        kwargs['validator'] = person_validator
+        super(PersonSchema, self).__init__(*args, **kwargs)
 
     id = colander.SchemaNode(colander.Int())
-    type = colander.SchemaNode(colander.String(),
-                               validator=deferred_actor_type_validator)
     name = colander.SchemaNode(colander.String(),
                                 missing=colander.drop)
-    family_name = colander.SchemaNode(colander.String(),
-                                      missing=colander.drop)
+    family_name = colander.SchemaNode(colander.String())
     family_name_prefix = colander.SchemaNode(colander.String(),
-                                             missing=colander.drop)
-    family_name_suffix = colander.SchemaNode(colander.String(),
                                              missing=colander.drop)
     given_name = colander.SchemaNode(colander.String(), missing=colander.drop)
     initials = colander.SchemaNode(colander.String(), missing=colander.drop)
-    corporate_international_name = colander.SchemaNode(colander.String(),
-                                                       missing=colander.drop)
-    corporate_native_name = colander.SchemaNode(colander.String(),
-                                                missing=colander.drop)
-    corporate_abbreviated_name = colander.SchemaNode(colander.String(),
-                                                     missing=colander.drop)
+    honorary = colander.SchemaNode(colander.String(), missing=colander.drop)
+
 
     @colander.instantiate(missing=colander.drop)
     class accounts(colander.SequenceSchema):
@@ -67,24 +49,24 @@ class ActorSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                        validator=deferred_account_type_validator)
             value = colander.SchemaNode(colander.String())
 
-class ActorPostSchema(ActorSchema):
-    # similar to actor schema, but id is optional
+class PersonPostSchema(PersonSchema):
+    # similar to person schema, but id is optional
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
 
-class ActorResponseSchema(colander.MappingSchema):
-    body = ActorSchema()
+class PersonResponseSchema(colander.MappingSchema):
+    body = PersonSchema()
 
-class ActorListingResponseSchema(colander.MappingSchema):
+class PersonListingResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
         @colander.instantiate()
         class records(colander.SequenceSchema):
-            actor = ActorSchema()
+            person = PersonSchema()
         total = colander.SchemaNode(colander.Int())
         offset = colander.SchemaNode(colander.Int())
         limit = colander.SchemaNode(colander.Int())
 
-class ActorListingRequestSchema(colander.MappingSchema):
+class PersonListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class querystring(colander.MappingSchema):
         offset = colander.SchemaNode(colander.Int(),
@@ -96,44 +78,44 @@ class ActorListingRequestSchema(colander.MappingSchema):
                                     validator=colander.Range(0, 100),
                                     missing=20)
 
-class ActorBulkRequestSchema(colander.MappingSchema):
+class PersonBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class records(colander.SequenceSchema):
-        actor = ActorSchema()
+        person = PersonSchema()
 
-@resource(name='Actor',
-          collection_path='/api/v1/actor/records',
-          path='/api/v1/actor/records/{id}',
-          tags=['actor'],
+@resource(name='Person',
+          collection_path='/api/v1/person/records',
+          path='/api/v1/person/records/{id}',
+          tags=['person'],
           api_security=[{'jwt':[]}],
-          factory=ResourceFactory(ActorResource))
-class ActorRecordAPI(object):
+          factory=ResourceFactory(PersonResource))
+class PersonRecordAPI(object):
     def __init__(self, request, context):
         self.request = request
         self.context = context
 
     @view(permission='view',
           response_schemas={
-        '200': ActorResponseSchema(description='Ok'),
+        '200': PersonResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
         '403': ErrorResponseSchema(description='Forbidden'),
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def get(self):
-        "Retrieve a Actor"
-        return ActorSchema().to_json(self.context.model.to_dict())
+        "Retrieve a Person"
+        return PersonSchema().to_json(self.context.model.to_dict())
 
     @view(permission='edit',
-          schema=ActorSchema(),
+          schema=PersonSchema(),
           validators=(colander_bound_repository_body_validator,),
           response_schemas={
-        '200': ActorResponseSchema(description='Ok'),
+        '200': PersonResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
         '403': ErrorResponseSchema(description='Forbidden'),
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def put(self):
-        "Modify an Actor"
+        "Modify an Person"
         body = self.request.validated
         body['id'] = int(self.request.matchdict['id'])
         self.context.model.update_dict(body)
@@ -143,7 +125,7 @@ class ActorRecordAPI(object):
             self.request.errors.status = 400
             self.request.errors.add('body', err.location, str(err))
             return
-        return ActorSchema().to_json(self.context.model.to_dict())
+        return PersonSchema().to_json(self.context.model.to_dict())
 
 
     @view(permission='delete',
@@ -154,72 +136,72 @@ class ActorRecordAPI(object):
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def delete(self):
-        "Delete an Actor"
+        "Delete an Person"
         self.context.delete()
         return {'status': 'ok'}
 
     @view(permission='add',
-          schema=ActorPostSchema(),
+          schema=PersonPostSchema(),
           validators=(colander_bound_repository_body_validator,),
           response_schemas={
-        '201': ActorResponseSchema(description='Created'),
+        '201': PersonResponseSchema(description='Created'),
         '400': ErrorResponseSchema(description='Bad Request'),
         '401': ErrorResponseSchema(description='Unauthorized'),
         '403': ErrorResponseSchema(description='Forbidden'),
         })
     def collection_post(self):
-        "Create a new Actor"
-        actor = Actor.from_dict(self.request.validated)
+        "Create a new Person"
+        person = Person.from_dict(self.request.validated)
         try:
-            self.context.put(actor)
+            self.context.put(person)
         except StorageError as err:
             self.request.errors.status = 400
             self.request.errors.add('body', err.location, str(err))
             return
 
         self.request.response.status = 201
-        return ActorSchema().to_json(actor.to_dict())
+        return PersonSchema().to_json(person.to_dict())
 
 
     @view(permission='view',
-          schema=ActorListingRequestSchema(),
+          schema=PersonListingRequestSchema(),
           validators=(colander_validator),
           cors_origins=('*', ),
           response_schemas={
-        '200': ActorListingResponseSchema(description='Ok'),
+        '200': PersonListingResponseSchema(description='Ok'),
         '400': ErrorResponseSchema(description='Bad Request'),
         '401': ErrorResponseSchema(description='Unauthorized')})
     def collection_get(self):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
-        order_by = [Actor.family_name.asc(), Actor.name.asc()]
+        order_by = [Person.family_name.asc(), Person.name.asc()]
         listing = self.context.search(
             offset=offset,
             limit=limit,
             order_by=order_by,
             principals=self.request.effective_principals)
-        schema = ActorSchema()
+        schema = PersonSchema()
         return {'total': listing['total'],
-                'records': [schema.to_json(actor.to_dict())
-                            for actor in listing['hits']],
+                'records': [schema.to_json(person.to_dict())
+                            for person in listing['hits']],
                 'limit': limit,
                 'offset': offset}
 
-actor_bulk = Service(name='ActorBulk',
-                     path='/api/v1/actor/bulk',
-                     factory=ResourceFactory(ActorResource),
+person_bulk = Service(name='PersonBulk',
+                     path='/api/v1/person/bulk',
+                     factory=ResourceFactory(PersonResource),
                      api_security=[{'jwt':[]}],
-                     tags=['actor'],
+                     tags=['person'],
                      cors_origins=('*', ),
-                     schema=ActorBulkRequestSchema(),
+                     schema=PersonBulkRequestSchema(),
                      validators=(colander_bound_repository_body_validator,),
                      response_schemas={
     '200': OKStatusResponseSchema(description='Ok'),
     '400': ErrorResponseSchema(description='Bad Request'),
     '401': ErrorResponseSchema(description='Unauthorized')})
 
-@actor_bulk.post(permission='import')
-def actor_bulk_import_view(request):
+@person_bulk.post(permission='import')
+def person_bulk_import_view(request):
     # get existing resources from submitted bulk
     keys = [r['id'] for r in request.validated['records'] if r.get('id')]
     existing_records = {r.id:r for r in request.context.get_many(keys) if r}

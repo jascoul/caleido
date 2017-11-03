@@ -9,6 +9,13 @@ from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            JsonMappingSchemaSerializerMixin)
 
+
+def owner_validator(node, kw):
+    if not kw.get('person_id') and not kw.get('group_id'):
+        node.name = '%s.person_id' % node.name
+        raise colander.Invalid(
+            node, "Required: supply one of 'person_id' or 'group_id'")
+
 class UserSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
     user_group = colander.SchemaNode(colander.Int())
@@ -16,9 +23,12 @@ class UserSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     credentials = colander.SchemaNode(colander.String())
     @colander.instantiate(missing=colander.drop)
     class owns(colander.SequenceSchema):
-        @colander.instantiate()
+        @colander.instantiate(validator=owner_validator)
         class owner(colander.MappingSchema):
-            actor_id = colander.SchemaNode(colander.Integer())
+            person_id = colander.SchemaNode(colander.Integer(),
+                                            missing=colander.drop)
+            group_id = colander.SchemaNode(colander.Integer(),
+                                           missing=colander.drop)
 
 class UserResponseSchema(colander.MappingSchema,
                          JsonMappingSchemaSerializerMixin):
