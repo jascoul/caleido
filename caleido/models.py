@@ -1,3 +1,7 @@
+import datetime
+from intervals import DateInterval
+from infinity import is_infinite
+
 from sqlalchemy import (
     Column,
     Integer,
@@ -324,6 +328,40 @@ class Membership(Base):
 
     during = Column(DateRangeType)
     provenance = Column(Unicode(1024))
+
+
+    def to_dict(self):
+        start_date = end_date = None
+        if self.during:
+            start_date = self.during.lower
+            end_date = self.during.upper
+            if is_infinite(start_date):
+                start_date = None
+            if is_infinite(end_date):
+                end_date = None
+
+        result = {'id': self.id,
+                  'person_id': self.person_id,
+                  'group_id': self.group_id,
+                  'start_date': start_date,
+                  'end_date': end_date,
+                  'provenance': self.provenance}
+        return result
+
+    def update_dict(self, data):
+
+        start_date = data.pop('start_date', None)
+        end_date = data.pop('end_date', None)
+        set_attribute(self, 'during', DateInterval([start_date, end_date]))
+        for key, value in data.items():
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        membership = Membership()
+        membership.update_dict(data)
+        return membership
+
 
 
 class Contributor(Base):

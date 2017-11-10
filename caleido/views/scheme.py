@@ -16,14 +16,14 @@ def type_factory(request):
 
 class TypeSchema(colander.MappingSchema):
     id = colander.SchemaNode(colander.String(), missing=colander.drop)
-    
+
     @colander.instantiate()
     class values(colander.SequenceSchema):
         @colander.instantiate()
         class value(colander.MappingSchema):
             key = colander.SchemaNode(colander.String())
             label = colander.SchemaNode(colander.String())
-            
+
 class TypeResponseSchema(colander.MappingSchema):
     body = TypeSchema()
 
@@ -35,18 +35,18 @@ class TypeListingSchema(colander.MappingSchema):
 class TypeListingResponseSchema(colander.MappingSchema):
     body = TypeListingSchema()
 
-    
+
 @resource(name='Type',
           collection_path='/api/v1/schemes/types',
           path='/api/v1/schemes/types/{id}',
-          tags=['scheme'],
+          tags=['config'],
           api_security=[{'jwt':[]}],
-          factory=type_factory)    
+          factory=type_factory)
 class TypeAPI(object):
     def __init__(self, request, context):
         self.request = request
         self.context = context
-        
+
     @view(permission='view',
           response_schemas={
         '200': TypeResponseSchema(description='Ok'),

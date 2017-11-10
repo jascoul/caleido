@@ -15,6 +15,9 @@ class JsonMappingSchemaSerializerMixin(object):
                 node = context
             else:
                 node = context.get(key)
+                if node is None:
+                    raise ValueError('%s has no field "%s"' % (
+                        context.__class__.__name__, key))
             if isinstance(node.typ, colander.String):
                 value = node.serialize(value)
             elif isinstance(node.typ, colander.Sequence):
@@ -33,6 +36,10 @@ class JsonMappingSchemaSerializerMixin(object):
                 value = cstruct
             elif isinstance(node.typ, colander.Integer):
                 value = int(node.serialize(value))
+            elif isinstance(node.typ, colander.Date):
+                value = node.serialize(value)
+            elif isinstance(node.typ, colander.DateTime):
+                value = node.serialize(value)
             elif isinstance(node.typ, colander.Boolean):
                 value = node.serialize(value) == 'true'
             else:

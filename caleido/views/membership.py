@@ -3,8 +3,8 @@ from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Group
-from caleido.resources import ResourceFactory, GroupResource
+from caleido.models import Membership
+from caleido.resources import ResourceFactory, MembershipResource
 
 from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
@@ -13,54 +13,33 @@ from caleido.utils import (ErrorResponseSchema,
                            JsonMappingSchemaSerializerMixin,
                            colander_bound_repository_body_validator)
 
-@colander.deferred
-def deferred_group_type_validator(node, kw):
-    types = kw['repository'].type_config('group_type')
-    return colander.OneOf([t['key'] for t in types])
-
-@colander.deferred
-def deferred_account_type_validator(node, kw):
-    types = kw['repository'].type_config('group_account_type')
-    return colander.OneOf([t['key'] for t in types])
-
-class GroupSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
+class MembershipSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     id = colander.SchemaNode(colander.Int())
-    type = colander.SchemaNode(colander.String(),
-                               validator=deferred_group_type_validator)
-    name = colander.SchemaNode(colander.String(),
-                                missing=colander.drop)
-    international_name = colander.SchemaNode(colander.String())
-    native_name = colander.SchemaNode(colander.String(),
-                                      missing=colander.drop)
-    abbreviated_name = colander.SchemaNode(colander.String(),
-                                           missing=colander.drop)
+    person_id = colander.SchemaNode(colander.Int())
+    group_id = colander.SchemaNode(colander.Int())
+    start_date = colander.SchemaNode(colander.Date(),
+                                     missing=colander.drop)
+    end_date = colander.SchemaNode(colander.Date(),
+                                   missing=colander.drop)
 
-    @colander.instantiate(missing=colander.drop)
-    class accounts(colander.SequenceSchema):
-        @colander.instantiate()
-        class account(colander.MappingSchema):
-            type = colander.SchemaNode(colander.String(),
-                                       validator=deferred_account_type_validator)
-            value = colander.SchemaNode(colander.String())
-
-class GroupPostSchema(GroupSchema):
-    # similar to group schema, but id is optional
+class MembershipPostSchema(MembershipSchema):
+    # similar to membership schema, but id is optional
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
 
-class GroupResponseSchema(colander.MappingSchema):
-    body = GroupSchema()
+class MembershipResponseSchema(colander.MappingSchema):
+    body = MembershipSchema()
 
-class GroupListingResponseSchema(colander.MappingSchema):
+class MembershipListingResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
         @colander.instantiate()
         class records(colander.SequenceSchema):
-            group = GroupSchema()
+            membership = MembershipSchema()
         total = colander.SchemaNode(colander.Int())
         offset = colander.SchemaNode(colander.Int())
         limit = colander.SchemaNode(colander.Int())
 
-class GroupListingRequestSchema(colander.MappingSchema):
+class MembershipListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class querystring(colander.MappingSchema):
         offset = colander.SchemaNode(colander.Int(),
@@ -72,44 +51,44 @@ class GroupListingRequestSchema(colander.MappingSchema):
                                     validator=colander.Range(0, 100),
                                     missing=20)
 
-class GroupBulkRequestSchema(colander.MappingSchema):
+class MembershipBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class records(colander.SequenceSchema):
-        group = GroupSchema()
+        membership = MembershipSchema()
 
-@resource(name='Group',
-          collection_path='/api/v1/group/records',
-          path='/api/v1/group/records/{id}',
-          tags=['group'],
+@resource(name='Membership',
+          collection_path='/api/v1/membership/records',
+          path='/api/v1/membership/records/{id}',
+          tags=['membership'],
           api_security=[{'jwt':[]}],
-          factory=ResourceFactory(GroupResource))
-class GroupRecordAPI(object):
+          factory=ResourceFactory(MembershipResource))
+class MembershipRecordAPI(object):
     def __init__(self, request, context):
         self.request = request
         self.context = context
 
     @view(permission='view',
           response_schemas={
-        '200': GroupResponseSchema(description='Ok'),
+        '200': MembershipResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
         '403': ErrorResponseSchema(description='Forbidden'),
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def get(self):
-        "Retrieve a Group"
-        return GroupSchema().to_json(self.context.model.to_dict())
+        "Retrieve a Membership"
+        return MembershipSchema().to_json(self.context.model.to_dict())
 
     @view(permission='edit',
-          schema=GroupSchema(),
+          schema=MembershipSchema(),
           validators=(colander_bound_repository_body_validator,),
           response_schemas={
-        '200': GroupResponseSchema(description='Ok'),
+        '200': MembershipResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
         '403': ErrorResponseSchema(description='Forbidden'),
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def put(self):
-        "Modify an Group"
+        "Modify a Membership"
         body = self.request.validated
         body['id'] = int(self.request.matchdict['id'])
         self.context.model.update_dict(body)
@@ -119,7 +98,7 @@ class GroupRecordAPI(object):
             self.request.errors.status = 400
             self.request.errors.add('body', err.location, str(err))
             return
-        return GroupSchema().to_json(self.context.model.to_dict())
+        return MembershipSchema().to_json(self.context.model.to_dict())
 
 
     @view(permission='delete',
@@ -130,72 +109,72 @@ class GroupRecordAPI(object):
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def delete(self):
-        "Delete an Group"
+        "Delete an Membership"
         self.context.delete()
         return {'status': 'ok'}
 
     @view(permission='add',
-          schema=GroupPostSchema(),
+          schema=MembershipPostSchema(),
           validators=(colander_bound_repository_body_validator,),
           response_schemas={
-        '201': GroupResponseSchema(description='Created'),
+        '201': MembershipResponseSchema(description='Created'),
         '400': ErrorResponseSchema(description='Bad Request'),
         '401': ErrorResponseSchema(description='Unauthorized'),
         '403': ErrorResponseSchema(description='Forbidden'),
         })
     def collection_post(self):
-        "Create a new Group"
-        group = Group.from_dict(self.request.validated)
+        "Create a new Membership"
+        membership = Membership.from_dict(self.request.validated)
         try:
-            self.context.put(group)
+            self.context.put(membership)
         except StorageError as err:
             self.request.errors.status = 400
             self.request.errors.add('body', err.location, str(err))
             return
 
         self.request.response.status = 201
-        return GroupSchema().to_json(group.to_dict())
+        return MembershipSchema().to_json(membership.to_dict())
 
 
     @view(permission='view',
-          schema=GroupListingRequestSchema(),
+          schema=MembershipListingRequestSchema(),
           validators=(colander_validator),
           cors_origins=('*', ),
           response_schemas={
-        '200': GroupListingResponseSchema(description='Ok'),
+        '200': MembershipListingResponseSchema(description='Ok'),
         '400': ErrorResponseSchema(description='Bad Request'),
         '401': ErrorResponseSchema(description='Unauthorized')})
     def collection_get(self):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
-        order_by = [Group.name.asc()]
+        order_by = [Membership.name.asc()]
         listing = self.context.search(
             offset=offset,
             limit=limit,
             order_by=order_by,
             principals=self.request.effective_principals)
-        schema = GroupSchema()
+        schema = MembershipSchema()
         return {'total': listing['total'],
-                'records': [schema.to_json(group.to_dict())
-                            for group in listing['hits']],
+                'records': [schema.to_json(membership.to_dict())
+                            for membership in listing['hits']],
                 'limit': limit,
                 'offset': offset}
 
-group_bulk = Service(name='GroupBulk',
-                     path='/api/v1/group/bulk',
-                     factory=ResourceFactory(GroupResource),
+membership_bulk = Service(name='MembershipBulk',
+                     path='/api/v1/membership/bulk',
+                     factory=ResourceFactory(MembershipResource),
                      api_security=[{'jwt':[]}],
-                     tags=['group'],
+                     tags=['membership'],
                      cors_origins=('*', ),
-                     schema=GroupBulkRequestSchema(),
+                     schema=MembershipBulkRequestSchema(),
                      validators=(colander_bound_repository_body_validator,),
                      response_schemas={
     '200': OKStatusResponseSchema(description='Ok'),
     '400': ErrorResponseSchema(description='Bad Request'),
     '401': ErrorResponseSchema(description='Unauthorized')})
 
-@group_bulk.post(permission='import')
-def group_bulk_import_view(request):
+@membership_bulk.post(permission='import')
+def membership_bulk_import_view(request):
     # get existing resources from submitted bulk
     keys = [r['id'] for r in request.validated['records'] if r.get('id')]
     existing_records = {r.id:r for r in request.context.get_many(keys) if r}

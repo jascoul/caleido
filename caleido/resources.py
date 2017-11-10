@@ -1,5 +1,6 @@
 import math
 
+import sqlalchemy as sql
 from pyramid.httpexceptions import HTTPForbidden
 from pyramid.security import Allow, ALL_PERMISSIONS
 from pyramid.interfaces import IAuthorizationPolicy
@@ -7,7 +8,9 @@ from sqlalchemy_utils.functions import get_primary_keys
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import transaction
-from caleido.models import User, Person, Group, GroupType
+from caleido.models import (
+    User, Person, Group, GroupType, GroupAccountType, PersonAccountType,
+    Membership)
 from caleido.exceptions import StorageError
 
 class ResourceFactory(object):
@@ -140,8 +143,14 @@ class BaseResource(object):
         if not isinstance(order_by, list):
             order_by = [order_by]
 
-        for filter in self.acl_filters(principals) + (filters or []):
-            query = query.filter(filter)
+        if filters:
+            query = query.filter(sql.and_(*filters))
+
+        acl_filters = []
+        for filter in self.acl_filters(principals):
+            acl_filters.append(filter)
+        if acl_filters:
+            query = query.filter(sql.or_(*acl_filters))
         total = query.count()
         query = query.order_by(*order_by).offset(offset).limit(limit)
         if keys_only:
@@ -222,7 +231,7 @@ class PersonResource(BaseResource):
                              'group:manager',
                              'group:editor'}:
                 return []
-            if principals.startswith('owner:person:'):
+            if principal.startswith('owner:person:'):
                 filters.append(Person.person_id == principal.split(':')[-1])
         return filters
 
@@ -258,8 +267,42 @@ class GroupResource(BaseResource):
         return filters
 
 
+class MembershipResource(BaseResource):
+    orm_class = Membership
+    key_col_name = 'id'
+
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
+        if self.model:
+            # group owners can view and edit members
+            yield (Allow, 'owner:group:%s' % self.model.group_id, ['view', 'edit', 'delete'])
+            # person owners can view and edit memberships
+            yield (Allow, 'owner:person:%s' % self.model.person_id, ['view', 'edit', 'delete'])
+        elif self.model is None:
+            # no model loaded yet, allow container view
+            yield (Allow, 'system.Authenticated', 'view')
+
+    def acl_filters(self, principals):
+        filters = []
+        for principal in principals:
+            if principal in {'group:admin',
+                             'group:manager',
+                             'group:editor'}:
+                return []
+            if principals.startswith('owner:group:'):
+                filters.append(Membership.group_id == principal.split(':')[-1])
+            elif principals.startswith('owner:person:'):
+                filters.append(Membership.person_id == principal.split(':')[-1])
+        return filters
+
+
 class TypeResource(object):
-    schemes = {'group': GroupType}
+    schemes = {'group': GroupType,
+               'groupAccount': GroupAccountType,
+               'personAccount': PersonAccountType}
     orm = None
 
     def __acl__(self):

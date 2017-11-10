@@ -10,6 +10,7 @@ from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            OKStatusResponseSchema,
+                           OKStatus,
                            JsonMappingSchemaSerializerMixin,
                            colander_bound_repository_body_validator)
 
@@ -57,6 +58,7 @@ class PersonResponseSchema(colander.MappingSchema):
     body = PersonSchema()
 
 class PersonListingResponseSchema(colander.MappingSchema):
+    status = OKStatus
     @colander.instantiate()
     class body(colander.MappingSchema):
         @colander.instantiate()
@@ -69,6 +71,8 @@ class PersonListingResponseSchema(colander.MappingSchema):
 class PersonListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class querystring(colander.MappingSchema):
+        query = colander.SchemaNode(colander.String(),
+                                    missing=colander.drop)
         offset = colander.SchemaNode(colander.Int(),
                                    default=0,
                                    validator=colander.Range(min=0),
@@ -87,6 +91,7 @@ class PersonBulkRequestSchema(colander.MappingSchema):
           collection_path='/api/v1/person/records',
           path='/api/v1/person/records/{id}',
           tags=['person'],
+          cors_origins=('*', ),
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(PersonResource))
 class PersonRecordAPI(object):
@@ -115,7 +120,7 @@ class PersonRecordAPI(object):
         '404': ErrorResponseSchema(description='Not Found'),
         })
     def put(self):
-        "Modify an Person"
+        "Modify a Person"
         body = self.request.validated
         body['id'] = int(self.request.matchdict['id'])
         self.context.model.update_dict(body)
@@ -175,7 +180,13 @@ class PersonRecordAPI(object):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
         order_by = [Person.family_name.asc(), Person.name.asc()]
+        query = self.request.validated['querystring'].get('query')
+        filters = []
+        if query:
+            filters.append(Person.name.like(query + '%'))
+
         listing = self.context.search(
+            filters=filters,
             offset=offset,
             limit=limit,
             order_by=order_by,
@@ -185,7 +196,8 @@ class PersonRecordAPI(object):
                 'records': [schema.to_json(person.to_dict())
                             for person in listing['hits']],
                 'limit': limit,
-                'offset': offset}
+                'offset': offset,
+                'status': 'ok'}
 
 person_bulk = Service(name='PersonBulk',
                      path='/api/v1/person/bulk',

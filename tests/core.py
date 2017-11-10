@@ -22,12 +22,12 @@ class BaseTest(unittest.TestCase):
         self.api = WebTestApp(self.app,
                               extra_environ={'HTTP_HOST': 'unittest.localhost'})
         storage = Storage(self.app.registry)
-        session = storage.make_session()
-        if 'unittest' in storage.repository_info(session):
-            storage.drop_repository(session, 'unittest')
+        self.session = storage.make_session()
+        if 'unittest' in storage.repository_info(self.session):
+            storage.drop_repository(self.session, 'unittest')
             transaction.commit()
-        storage.create_repository(session, 'unittest', 'unittest.localhost')
-        storage.initialize_repository(session, 'unittest', 'admin', 'admin')
+        storage.create_repository(self.session, 'unittest', 'unittest.localhost')
+        storage.initialize_repository(self.session, 'unittest', 'admin', 'admin')
         transaction.commit()
 
     def admin_token(self):
