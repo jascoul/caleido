@@ -192,7 +192,7 @@ def includeme(config):
     # use pyramid_retry to retry a request when transient exceptions occur
     config.include('pyramid_retry')
 
-    engine = engine_from_config(settings, prefix='sqlalchemy.')
+    engine = engine_from_config(settings, prefix='sqlalchemy.', echo=True)
 
     session_factory = sessionmaker()
     session_factory.configure(bind=engine)

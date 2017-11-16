@@ -5,9 +5,11 @@ from pyramid.httpexceptions import HTTPForbidden
 from pyramid.security import Allow, ALL_PERMISSIONS
 from pyramid.interfaces import IAuthorizationPolicy
 from sqlalchemy_utils.functions import get_primary_keys
-from sqlalchemy.orm import load_only
+from sqlalchemy.orm import load_only, Load
+from sqlalchemy import func
 import sqlalchemy.exc
 import transaction
+
 from caleido.models import (
     User, Person, Group, GroupType, GroupAccountType, PersonAccountType,
     Membership)
@@ -137,8 +139,10 @@ class BaseResource(object):
                limit=100,
                offset=0,
                order_by=None,
+               format=None,
+               from_query=None,
                keys_only=False):
-        query = self.session.query(self.orm_class)
+        query = from_query or self.session.query(self.orm_class)
         order_by = order_by or []
         if not isinstance(order_by, list):
             order_by = [order_by]
@@ -262,7 +266,7 @@ class GroupResource(BaseResource):
                              'group:manager',
                              'group:editor'}:
                 return []
-            if principals.startswith('owner:group:'):
+            if principal.startswith('owner:group:'):
                 filters.append(Group.group_id == principal.split(':')[-1])
         return filters
 

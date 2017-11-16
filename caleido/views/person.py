@@ -1,9 +1,13 @@
 import colander
+
+from sqlalchemy import func
+from sqlalchemy.orm import Load
+
 from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Person
+from caleido.models import Person, Membership
 from caleido.resources import ResourceFactory, PersonResource
 
 from caleido.exceptions import StorageError
@@ -58,9 +62,9 @@ class PersonResponseSchema(colander.MappingSchema):
     body = PersonSchema()
 
 class PersonListingResponseSchema(colander.MappingSchema):
-    status = OKStatus
     @colander.instantiate()
     class body(colander.MappingSchema):
+        status = OKStatus
         @colander.instantiate()
         class records(colander.SequenceSchema):
             person = PersonSchema()
@@ -81,6 +85,10 @@ class PersonListingRequestSchema(colander.MappingSchema):
                                     default=20,
                                     validator=colander.Range(0, 100),
                                     missing=20)
+        format = colander.SchemaNode(
+            colander.String(),
+            validator=colander.OneOf(['record', 'snippet']),
+            missing=colander.drop)
 
 class PersonBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -180,21 +188,44 @@ class PersonRecordAPI(object):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
         order_by = [Person.family_name.asc(), Person.name.asc()]
+        format = self.request.validated['querystring'].get('format')
+        if format == 'record':
+            format = None
         query = self.request.validated['querystring'].get('query')
         filters = []
         if query:
             filters.append(Person.name.like(query + '%'))
+        from_query=None
+        if format == 'snippet':
+            from_query = self.context.session.query(Person,
+                                                    func.count(Membership.id))
+            from_query = from_query.outerjoin(Membership).options(
+                Load(Person).load_only('id', 'name'))
+            from_query = from_query.group_by(Person.id, Person.name)
 
         listing = self.context.search(
             filters=filters,
             offset=offset,
             limit=limit,
             order_by=order_by,
+            format=format,
+            from_query=from_query,
             principals=self.request.effective_principals)
+
         schema = PersonSchema()
+
+        if format == 'snippet':
+            records = []
+            for person, membership_count in listing['hits']:
+                records.append({'id': person.id,
+                                'name': person.name,
+                                'memberships': membership_count})
+        else:
+            records = [schema.to_json(person.to_dict())
+                       for person in listing['hits']]
+
         return {'total': listing['total'],
-                'records': [schema.to_json(person.to_dict())
-                            for person in listing['hits']],
+                'records': records,
                 'limit': limit,
                 'offset': offset,
                 'status': 'ok'}

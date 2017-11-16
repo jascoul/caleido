@@ -1,15 +1,20 @@
 import colander
+import sqlalchemy as sql
+from sqlalchemy import func
+from sqlalchemy.orm import Load
+
 from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Group
+from caleido.models import Group, Membership
 from caleido.resources import ResourceFactory, GroupResource
 
 from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            OKStatusResponseSchema,
+                           OKStatus,
                            JsonMappingSchemaSerializerMixin,
                            colander_bound_repository_body_validator)
 
@@ -53,6 +58,7 @@ class GroupResponseSchema(colander.MappingSchema):
 class GroupListingResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
+        status = OKStatus
         @colander.instantiate()
         class records(colander.SequenceSchema):
             group = GroupSchema()
@@ -63,6 +69,10 @@ class GroupListingResponseSchema(colander.MappingSchema):
 class GroupListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class querystring(colander.MappingSchema):
+        query = colander.SchemaNode(colander.String(),
+                                    missing=colander.drop)
+        filter_type = colander.SchemaNode(colander.String(),
+                                          missing=colander.drop)
         offset = colander.SchemaNode(colander.Int(),
                                    default=0,
                                    validator=colander.Range(min=0),
@@ -71,6 +81,10 @@ class GroupListingRequestSchema(colander.MappingSchema):
                                     default=20,
                                     validator=colander.Range(0, 100),
                                     missing=20)
+        format = colander.SchemaNode(
+            colander.String(),
+            validator=colander.OneOf(['record', 'snippet']),
+            missing=colander.drop)
 
 class GroupBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -81,6 +95,7 @@ class GroupBulkRequestSchema(colander.MappingSchema):
           collection_path='/api/v1/group/records',
           path='/api/v1/group/records/{id}',
           tags=['group'],
+          cors_origins=('*', ),
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(GroupResource))
 class GroupRecordAPI(object):
@@ -169,17 +184,51 @@ class GroupRecordAPI(object):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
         order_by = [Group.name.asc()]
+        format = self.request.validated['querystring'].get('format')
+        if format == 'record':
+            format = None
+        query = self.request.validated['querystring'].get('query')
+        filters = []
+        if query:
+            filters.append(Group.name.like(query + '%'))
+        filter_type = self.request.validated['querystring'].get('filter_type')
+        if filter_type:
+            filter_types = filter_type.split(',')
+            filters.append(sql.or_(*[Group.type == f for f in filter_types]))
+        from_query=None
+        if format == 'snippet':
+            from_query = self.context.session.query(Group,
+                                                    func.count(Membership.id))
+            from_query = from_query.outerjoin(Membership).options(
+                Load(Group).load_only('id', 'name'))
+            from_query = from_query.group_by(Group.id, Group.name)
+
         listing = self.context.search(
+            filters=filters,
             offset=offset,
             limit=limit,
             order_by=order_by,
+            format=format,
+            from_query=from_query,
             principals=self.request.effective_principals)
+
         schema = GroupSchema()
+
+        if format == 'snippet':
+            records = []
+            for person, membership_count in listing['hits']:
+                records.append({'id': person.id,
+                                'name': person.name,
+                                'members': membership_count})
+        else:
+            records = [schema.to_json(group.to_dict())
+                       for group in listing['hits']]
+
         return {'total': listing['total'],
-                'records': [schema.to_json(group.to_dict())
-                            for group in listing['hits']],
+                'records': records,
                 'limit': limit,
-                'offset': offset}
+                'offset': offset,
+                'status': 'ok'}
 
 group_bulk = Service(name='GroupBulk',
                      path='/api/v1/group/bulk',
