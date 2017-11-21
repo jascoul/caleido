@@ -121,6 +121,7 @@ class PersonRecordAPI(object):
     @view(permission='edit',
           schema=PersonSchema(),
           validators=(colander_bound_repository_body_validator,),
+          cors_origins=('*', ),
           response_schemas={
         '200': PersonResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -156,6 +157,7 @@ class PersonRecordAPI(object):
     @view(permission='add',
           schema=PersonPostSchema(),
           validators=(colander_bound_repository_body_validator,),
+          cors_origins=('*', ),
           response_schemas={
         '201': PersonResponseSchema(description='Created'),
         '400': ErrorResponseSchema(description='Bad Request'),
