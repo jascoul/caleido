@@ -59,8 +59,15 @@ client = Service(name='Client',
 
 @client.get()
 def client_config(request):
-    group_types = [{'id': v['key'], 'label': v['label']}
-                   for v in TypeResource(request.dbsession, 'group').to_dict()['values']]
+    group_types = [
+        {'id': v['key'], 'label': v['label']}
+        for v in TypeResource(request.dbsession, 'group').to_dict()['values']]
+    group_account_types = [
+        {'id': v['key'], 'label': v['label']}
+        for v in TypeResource(request.dbsession, 'groupAccount').to_dict()['values']]
+    person_account_types = [
+        {'id': v['key'], 'label': v['label']}
+        for v in TypeResource(request.dbsession, 'personAccount').to_dict()['values']]
     result = {
         'status': 'ok',
         'types': [{'id': 'person',
@@ -71,11 +78,13 @@ def client_config(request):
                                'label': 'Memberships',
                                'type': 'number'}],
                    'types': [],
+                   'account_types': person_account_types,
                    'filters': [],
                    'label': 'Person', 'label_plural': 'Persons'},
                   {'id': 'group',
                    'label': 'Group',
                    'types': group_types,
+                   'account_types': group_account_types,
                    'filters': [{'label': 'Group Type',
                                 'id': 'type',
                                 'values': group_types}],

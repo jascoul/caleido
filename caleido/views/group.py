@@ -196,12 +196,20 @@ class GroupRecordAPI(object):
             filter_types = filter_type.split(',')
             filters.append(sql.or_(*[Group.type == f for f in filter_types]))
         from_query=None
+        query_callback = None
         if format == 'snippet':
-            from_query = self.context.session.query(Group,
-                                                    func.count(Membership.id))
-            from_query = from_query.outerjoin(Membership).options(
+            from_query = self.context.session.query(Group)
+            from_query = from_query.options(
                 Load(Group).load_only('id', 'name'))
-            from_query = from_query.group_by(Group.id, Group.name)
+
+            def query_callback(from_query):
+                filtered_groups = from_query.cte('filtered_groups')
+                with_memberships = self.context.session.query(
+                    filtered_groups,
+                    func.count(Membership.id)
+                    ).outerjoin(Membership).group_by(filtered_groups.c.id,
+                                                     filtered_groups.c.name)
+                return with_memberships
 
         listing = self.context.search(
             filters=filters,
@@ -210,15 +218,16 @@ class GroupRecordAPI(object):
             order_by=order_by,
             format=format,
             from_query=from_query,
+            post_query_callback=query_callback,
             principals=self.request.effective_principals)
 
         schema = GroupSchema()
 
         if format == 'snippet':
             records = []
-            for person, membership_count in listing['hits']:
-                records.append({'id': person.id,
-                                'name': person.name,
+            for group_id, group_name, membership_count in listing['hits']:
+                records.append({'id': group_id,
+                                'name': group_name,
                                 'members': membership_count})
         else:
             records = [schema.to_json(group.to_dict())

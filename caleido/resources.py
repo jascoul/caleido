@@ -141,6 +141,7 @@ class BaseResource(object):
                order_by=None,
                format=None,
                from_query=None,
+               post_query_callback=None,
                keys_only=False):
         query = from_query or self.session.query(self.orm_class)
         order_by = order_by or []
@@ -157,6 +158,9 @@ class BaseResource(object):
             query = query.filter(sql.or_(*acl_filters))
         total = query.count()
         query = query.order_by(*order_by).offset(offset).limit(limit)
+        if post_query_callback:
+            # useful for cte aggregations, etc
+            query = post_query_callback(query)
         if keys_only:
             query = query.options(load_only(self.key_col_name))
         return {'total': total,

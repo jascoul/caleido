@@ -198,12 +198,20 @@ class PersonRecordAPI(object):
         if query:
             filters.append(Person.name.like(query + '%'))
         from_query=None
+        query_callback = None
         if format == 'snippet':
-            from_query = self.context.session.query(Person,
-                                                    func.count(Membership.id))
-            from_query = from_query.outerjoin(Membership).options(
+            from_query = self.context.session.query(Person)
+            from_query = from_query.options(
                 Load(Person).load_only('id', 'name'))
-            from_query = from_query.group_by(Person.id, Person.name)
+
+            def query_callback(from_query):
+                filtered_persons = from_query.cte('filtered_persons')
+                with_memberships = self.context.session.query(
+                    filtered_persons,
+                    func.count(Membership.id)
+                    ).outerjoin(Membership).group_by(filtered_persons.c.id,
+                                                     filtered_persons.c.name)
+                return with_memberships
 
         listing = self.context.search(
             filters=filters,
@@ -212,15 +220,16 @@ class PersonRecordAPI(object):
             order_by=order_by,
             format=format,
             from_query=from_query,
+            post_query_callback=query_callback,
             principals=self.request.effective_principals)
 
         schema = PersonSchema()
 
         if format == 'snippet':
             records = []
-            for person, membership_count in listing['hits']:
-                records.append({'id': person.id,
-                                'name': person.name,
+            for person_id, person_name, membership_count in listing['hits']:
+                records.append({'id': person_id,
+                                'name': person_name,
                                 'memberships': membership_count})
         else:
             records = [schema.to_json(person.to_dict())
