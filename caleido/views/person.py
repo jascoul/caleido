@@ -54,6 +54,16 @@ class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                        validator=deferred_account_type_validator)
             value = colander.SchemaNode(colander.String())
 
+    @colander.instantiate(missing=colander.drop)
+    class memberships(colander.SequenceSchema):
+        @colander.instantiate()
+        class membership(colander.MappingSchema):
+            group_id = colander.SchemaNode(colander.Integer())
+            start_date = colander.SchemaNode(colander.Date(),
+                                             missing=colander.drop)
+            end_date = colander.SchemaNode(colander.Date(),
+                                           missing=colander.drop)
+
 class PersonPostSchema(PersonSchema):
     # similar to person schema, but id is optional
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)

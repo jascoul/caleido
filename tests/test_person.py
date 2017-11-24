@@ -133,6 +133,7 @@ class PersonWebTest(BaseTest):
              status=400)
         assert 'IntegrityError' in out.json['errors'][0]['description']
 
+
     def test_insert_empty_account_or_no_account(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json(

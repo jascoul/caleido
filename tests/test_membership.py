@@ -97,6 +97,58 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
                          headers=headers,
                          status=404)
 
+    def test_adding_memberships_through_a_person(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        # we can embed memberships in person records, the person_id is then
+        # used from the
+        out = self.api.post_json(
+            '/api/v1/person/records',
+            {'family_name': 'Blow',
+             'given_name': 'Joe',
+             'type': 'individual',
+             'memberships': [{'group_id': self.corp_id,
+                              'start_date': '2017-01-01'}]},
+             headers=headers,
+             status=201)
+        joe_id = out.json['id']
+        assert out.json['memberships'] == [{'group_id': self.corp_id,
+                                            'start_date': '2017-01-01'}]
+        out = self.api.get('/api/v1/person/records/%s' % joe_id,
+                           headers=headers)
+        assert out.json['memberships'] == [{'group_id': self.corp_id,
+                                            'start_date': '2017-01-01'}]
+        out = self.api.put_json(
+            '/api/v1/person/records/%s' % joe_id,
+            {'id': joe_id,
+             'family_name': 'Blow',
+             'given_name': 'Joe',
+             'type': 'individual',
+             'memberships': [{'group_id': self.corp_id,
+                              'start_date': '2017-01-01',
+                              'end_date': '2017-12-31'}]},
+            headers=headers,
+            status=200)
+        out = self.api.get('/api/v1/person/records/%s' % joe_id,
+                           headers=headers)
+        assert out.json['memberships'] == [{'group_id': self.corp_id,
+                                            'start_date': '2017-01-01',
+                                            'end_date': '2017-12-31'}]
+        # note that if we update the record without specifying the memberships
+        # then the membersips should remain intact
+        out = self.api.put_json(
+            '/api/v1/person/records/%s' % joe_id,
+            {'id': joe_id,
+             'family_name': 'Blow',
+             'given_name': 'Joe',
+             'type': 'individual'},
+            headers=headers,
+            status=200)
+        out = self.api.get('/api/v1/person/records/%s' % joe_id,
+                           headers=headers)
+        assert out.json['memberships'] == [{'group_id': self.corp_id,
+                                            'start_date': '2017-01-01',
+                                            'end_date': '2017-12-31'}]
+
     def test_person_owners_can_view_and_edit(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json('/api/v1/membership/records',

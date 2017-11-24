@@ -89,7 +89,9 @@ class Person(Base):
     family_name_prefix = Column(Unicode(64))
     honorary = Column(Unicode(64))
 
-    memberships = relationship('Membership', back_populates='person')
+    memberships = relationship('Membership',
+                               back_populates='person',
+                               cascade='all, delete-orphan')
     accounts = relationship('PersonAccount',
                             back_populates='person',
                             cascade='all, delete-orphan')
@@ -103,11 +105,18 @@ class Person(Base):
 
         result['accounts'] = [{'type': a.type, 'value': a.value}
                               for a in self.accounts]
+        result['memberships'] = []
+        for membership in self.memberships:
+            membership = membership.to_dict()
+            result['memberships'].append(
+                {'group_id': membership['group_id'],
+                 'start_date': membership['start_date'],
+                 'end_date': membership['end_date']})
 
         return result
 
     def update_dict(self, data):
-        if data.get('accounts') is not None:
+        if 'accounts' in data:
             new_accounts = set([(a['type'], a['value'])
                                 for a in data.pop('accounts', [])])
             for account in self.accounts:
@@ -121,6 +130,27 @@ class Person(Base):
                 self.accounts.append(PersonAccount(type=type,
                                                    value=value,
                                                    person_id=data.get('id')))
+        if 'memberships' in data:
+            # only update memberships if key is present
+            new_memberships = set([(m['group_id'],
+                                    m.get('start_date'),
+                                    m.get('end_date'))
+                                   for m in data.pop('memberships', [])])
+            for membership in self.memberships:
+                membership_dict = membership.to_dict()
+                key = (membership_dict['group_id'],
+                       membership_dict.get('start_date'),
+                       membership_dict.get('end_date'))
+                if key in new_memberships:
+                    new_memberships.remove(key)
+                else:
+                    self.memberships.remove(membership)
+            for new_membership in new_memberships:
+                group_id, start_date, end_date = new_membership
+                self.memberships.append(
+                    Membership.from_dict(dict(group_id=group_id,
+                                              start_date=start_date,
+                                              end_date=end_date)))
 
         for key, value in data.items():
             set_attribute(self, key, value)
@@ -152,6 +182,8 @@ class PersonAccount(Base):
                   ForeignKey('person_account_type_schemes.key'),
                   nullable=False)
     value = Column(Unicode(128), nullable=False)
+
+
 
 
 class GroupType(Base):
