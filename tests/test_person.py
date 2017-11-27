@@ -279,3 +279,55 @@ class PersonAuthorzationWebTest(BaseTest):
         out = self.api.get('/api/v1/person/records/2', headers=headers)
         assert out.json['initials'] == 'J.'
 
+class PersonRetrievalWebTest(PersonWebTest):
+    def setUp(self):
+        super(PersonRetrievalWebTest, self).setUp()
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json('/api/v1/person/records',
+                                 {'family_name': 'Doe',
+                                  'given_name': 'John'},
+                                 headers=headers,
+                                 status=201)
+        self.john_id = out.json['id']
+        out = self.api.post_json('/api/v1/person/records',
+                                 {'family_name': 'Blow',
+                                  'given_name': 'Joe'},
+                                 headers=headers,
+                                 status=201)
+        self.joe_id = out.json['id']
+        out = self.api.post_json('/api/v1/group/records',
+                                 {'international_name': 'Corp.',
+                                  'type': 'organisation'},
+                                 headers=headers,
+                                 status=201)
+        self.corp_id = out.json['id']
+        self.api.post_json('/api/v1/membership/records',
+                           {'person_id': self.john_id,
+                            'group_id': self.corp_id,
+                            'start_date': '2017-01-01',
+                            'end_date': '2017-12-31'},
+                           headers=headers,
+                           status=201)
+
+    def test_person_filtering(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get(
+            '/api/v1/person/records',
+            headers=headers, status=200)
+        assert out.json['total'] == 2
+        out = self.api.get(
+            '/api/v1/person/records?query=Doe',
+            headers=headers, status=200)
+        assert out.json['total'] == 1
+
+    def test_person_snippet(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get(
+            '/api/v1/person/records?query=Doe&format=snippet',
+            headers=headers, status=200)
+        assert out.json['total'] == 1
+        assert len(out.json.get('snippets', [])) == 1
+        assert out.json['snippets'][0]['memberships'] == 1
+
+
+

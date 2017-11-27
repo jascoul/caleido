@@ -4,7 +4,6 @@ from core import BaseTest
 from caleido.models import User
 
 class MembershipWebTest(BaseTest):
-
     def setUp(self):
         super(MembershipWebTest, self).setUp()
         headers = dict(Authorization='Bearer %s' % self.admin_token())
@@ -26,6 +25,12 @@ class MembershipWebTest(BaseTest):
                                  headers=headers,
                                  status=201)
         self.corp_id = out.json['id']
+        out = self.api.post_json('/api/v1/group/records',
+                                 {'international_name': 'Department A',
+                                  'type': 'organisation'},
+                                 headers=headers,
+                                 status=201)
+        self.dept_id = out.json['id']
 
     def test_membership_crud_as_admin(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
@@ -149,6 +154,7 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
                                             'start_date': '2017-01-01',
                                             'end_date': '2017-12-31'}]
 
+
     def test_person_owners_can_view_and_edit(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json('/api/v1/membership/records',
@@ -255,3 +261,65 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
         assert out.json['status'] == 'ok'
         out = self.api.get('/api/v1/membership/records/2', headers=headers)
         assert out.json['end_date'] == '2018-12-31'
+
+
+class MembershipRetrievalWebTest(MembershipWebTest):
+    def setUp(self):
+        super(MembershipRetrievalWebTest, self).setUp()
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        self.api.post_json('/api/v1/membership/records',
+                           {'person_id': self.john_id,
+                            'group_id': self.corp_id,
+                            'start_date': '2017-01-01',
+                            'end_date': '2017-12-31'},
+                           headers=headers,
+                           status=201)
+        self.api.post_json('/api/v1/membership/records',
+                           {'person_id': self.john_id,
+                            'group_id': self.corp_id,
+                            'start_date': '2018-01-01',
+                            'end_date': '2018-12-31'},
+                           headers=headers,
+                           status=201)
+        self.api.post_json('/api/v1/membership/records',
+                           {'person_id': self.john_id,
+                            'group_id': self.dept_id,
+                            'start_date': '2018-01-01',
+                            'end_date': '2018-12-31'},
+                           headers=headers,
+                           status=201)
+        self.api.post_json('/api/v1/membership/records',
+                           {'person_id': self.jane_id,
+                            'group_id': self.corp_id,
+                            'start_date': '2017-01-01',
+                            'end_date': '2017-12-31'},
+                           headers=headers,
+                           status=201)
+
+    def test_membership_filtering(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get(
+            '/api/v1/membership/records',
+            headers=headers, status=200)
+        assert out.json['total'] == 4
+        out = self.api.get(
+            '/api/v1/membership/records?person_id=%s' % self.john_id,
+            headers=headers, status=200)
+        assert out.json['total'] == 3
+        out = self.api.get(
+            '/api/v1/membership/records?group_id=%s' % self.dept_id,
+            headers=headers, status=200)
+        assert out.json['total'] == 1
+
+    def test_membership_snippet(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get(
+            '/api/v1/membership/records?person_id=%s&format=snippet' % self.jane_id ,
+            headers=headers, status=200)
+        assert out.json['total'] == 1
+        assert len(out.json.get('snippets', [])) == 1
+        assert out.json['snippets'][0]['person_name'] == 'Doe (Jane)'
+        assert out.json['snippets'][0]['group_name'] == 'Corp.'
+
+
+

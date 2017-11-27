@@ -3,15 +3,17 @@ from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Membership
+from caleido.models import Membership, Person, Group
 from caleido.resources import ResourceFactory, MembershipResource
 
 from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            OKStatusResponseSchema,
+                           OKStatus,
                            JsonMappingSchemaSerializerMixin,
-                           colander_bound_repository_body_validator)
+                           colander_bound_repository_body_validator,
+                           parse_duration)
 
 class MembershipSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     id = colander.SchemaNode(colander.Int())
@@ -32,12 +34,28 @@ class MembershipResponseSchema(colander.MappingSchema):
 class MembershipListingResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
-        @colander.instantiate()
-        class records(colander.SequenceSchema):
-            membership = MembershipSchema()
+        status = OKStatus
         total = colander.SchemaNode(colander.Int())
         offset = colander.SchemaNode(colander.Int())
         limit = colander.SchemaNode(colander.Int())
+
+        @colander.instantiate()
+        class records(colander.SequenceSchema):
+            membership = MembershipSchema()
+
+        @colander.instantiate()
+        class snippets(colander.SequenceSchema):
+            @colander.instantiate()
+            class snippet(colander.MappingSchema):
+                id = colander.SchemaNode(colander.Int())
+                person_id = colander.SchemaNode(colander.Int())
+                person_name = colander.SchemaNode(colander.String())
+                group_id = colander.SchemaNode(colander.Int())
+                group_name = colander.SchemaNode(colander.String())
+                start_date = colander.SchemaNode(colander.Date(),
+                                                 missing=colander.drop)
+                end_date = colander.SchemaNode(colander.Date(),
+                                               missing=colander.drop)
 
 class MembershipListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -50,6 +68,14 @@ class MembershipListingRequestSchema(colander.MappingSchema):
                                     default=20,
                                     validator=colander.Range(0, 100),
                                     missing=20)
+        person_id = colander.SchemaNode(colander.Int(),
+                                        missing=colander.drop)
+        group_id = colander.SchemaNode(colander.Int(),
+                                       missing=colander.drop)
+        format = colander.SchemaNode(
+            colander.String(),
+            validator=colander.OneOf(['record', 'snippet']),
+            missing=colander.drop)
 
 class MembershipBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -147,18 +173,68 @@ class MembershipRecordAPI(object):
     def collection_get(self):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
-        order_by = [Membership.name.asc()]
+        person_id = self.request.validated['querystring'].get('person_id')
+        group_id = self.request.validated['querystring'].get('group_id')
+        format = self.request.validated['querystring'].get('format')
+        order_by = []
+
+        filters = []
+        if person_id:
+            filters.append(Membership.person_id == person_id)
+        if group_id:
+            filters.append(Membership.group_id == group_id)
+
+        from_query=None
+        query_callback = None
+        if format == 'record':
+            format = None
+        elif format == 'snippet':
+            from_query = self.context.session.query(Membership)
+            def query_callback(from_query):
+                filtered_members = from_query.cte('filtered_members')
+                with_members = self.context.session.query(
+                    filtered_members,
+                    Person.name.label('person_name'),
+                    Group.name.label('group_name')).join(Person).join(Group)
+                return with_members
+
+
         listing = self.context.search(
+            from_query=from_query,
+            filters=filters,
             offset=offset,
             limit=limit,
             order_by=order_by,
+            post_query_callback=query_callback,
             principals=self.request.effective_principals)
         schema = MembershipSchema()
-        return {'total': listing['total'],
-                'records': [schema.to_json(membership.to_dict())
-                            for membership in listing['hits']],
-                'limit': limit,
-                'offset': offset}
+        result = {'total': listing['total'],
+                  'records': [],
+                  'snippets': [],
+                  'limit': limit,
+                  'status': 'ok',
+                  'offset': offset}
+
+        if format == 'snippet':
+            snippets = []
+            for hit in listing['hits']:
+                start_date, end_date = parse_duration(hit.during,
+                                                      format='%Y-%m-%d')
+                snippets.append({'id': hit.id,
+                                 'person_id': hit.person_id,
+                                 'group_id': hit.group_id,
+                                 'person_name': hit.person_name,
+                                 'group_name': hit.group_name,
+                                 'start_date': start_date,
+                                 'end_date': end_date})
+            result['snippets'] = snippets
+        else:
+            result['records'] = [schema.to_json(person.to_dict())
+                                 for person in listing['hits']]
+
+        return result
+
+
 
 membership_bulk = Service(name='MembershipBulk',
                      path='/api/v1/membership/bulk',

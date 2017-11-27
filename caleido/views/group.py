@@ -59,12 +59,21 @@ class GroupListingResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
         status = OKStatus
-        @colander.instantiate()
-        class records(colander.SequenceSchema):
-            group = GroupSchema()
         total = colander.SchemaNode(colander.Int())
         offset = colander.SchemaNode(colander.Int())
         limit = colander.SchemaNode(colander.Int())
+
+        @colander.instantiate()
+        class records(colander.SequenceSchema):
+            group = GroupSchema()
+
+        @colander.instantiate()
+        class snippets(colander.SequenceSchema):
+            @colander.instantiate()
+            class snippet(colander.MappingSchema):
+                id = colander.SchemaNode(colander.Int())
+                name = colander.SchemaNode(colander.String())
+                members = colander.SchemaNode(colander.Int())
 
 class GroupListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -206,7 +215,7 @@ class GroupRecordAPI(object):
                 filtered_groups = from_query.cte('filtered_groups')
                 with_memberships = self.context.session.query(
                     filtered_groups,
-                    func.count(Membership.id)
+                    func.count(Membership.id).label('membership_count')
                     ).outerjoin(Membership).group_by(filtered_groups.c.id,
                                                      filtered_groups.c.name)
                 return with_memberships
@@ -220,24 +229,26 @@ class GroupRecordAPI(object):
             from_query=from_query,
             post_query_callback=query_callback,
             principals=self.request.effective_principals)
-
         schema = GroupSchema()
+        result = {'total': listing['total'],
+                  'records': [],
+                  'snippets': [],
+                  'limit': limit,
+                  'offset': offset,
+                  'status': 'ok'}
 
         if format == 'snippet':
-            records = []
-            for group_id, group_name, membership_count in listing['hits']:
-                records.append({'id': group_id,
-                                'name': group_name,
-                                'members': membership_count})
+            snippets = []
+            for hit in listing['hits']:
+                snippets.append({'id': hit.id,
+                                 'name': hit.name,
+                                 'members': hit.membership_count})
+            result['snippets'] = snippets
         else:
-            records = [schema.to_json(group.to_dict())
-                       for group in listing['hits']]
+            result['records'] = [schema.to_json(group.to_dict())
+                                 for group in listing['hits']]
 
-        return {'total': listing['total'],
-                'records': records,
-                'limit': limit,
-                'offset': offset,
-                'status': 'ok'}
+        return result
 
 group_bulk = Service(name='GroupBulk',
                      path='/api/v1/group/bulk',

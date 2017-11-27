@@ -261,6 +261,8 @@ class GroupResource(BaseResource):
 
     def pre_put_hook(self, model):
         model.name = model.international_name
+        if model.abbreviated_name:
+            model.name = '%s (%s)' % (model.name, model.abbreviated_name)
         return model
 
     def acl_filters(self, principals):
@@ -300,10 +302,11 @@ class MembershipResource(BaseResource):
                              'group:manager',
                              'group:editor'}:
                 return []
-            if principals.startswith('owner:group:'):
+            if principal.startswith('owner:group:'):
                 filters.append(Membership.group_id == principal.split(':')[-1])
-            elif principals.startswith('owner:person:'):
-                filters.append(Membership.person_id == principal.split(':')[-1])
+            elif principal.startswith('owner:person:'):
+                filters.append(
+                    Membership.person_id == principal.split(':')[-1])
         return filters
 
 

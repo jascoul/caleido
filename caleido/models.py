@@ -1,6 +1,5 @@
 import datetime
 from intervals import DateInterval
-from infinity import is_infinite
 
 from sqlalchemy import (
     Column,
@@ -21,6 +20,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy_utils import DateRangeType, LtreeType, PasswordType
 from sqlalchemy.orm.attributes import set_attribute
 Base = declarative_base()
+
+from caleido.utils import parse_duration
 
 class Kind(Base):
     __tablename__ = 'kind_schemes'
@@ -88,6 +89,7 @@ class Person(Base):
     initials = Column(Unicode(32))
     family_name_prefix = Column(Unicode(64))
     honorary = Column(Unicode(64))
+    alternative_name = Column(UnicodeText)
 
     memberships = relationship('Membership',
                                back_populates='person',
@@ -149,9 +151,9 @@ class Person(Base):
                 group_id, start_date, end_date = new_membership
                 self.memberships.append(
                     Membership.from_dict(dict(group_id=group_id,
+                                              person_id=data.get('id'),
                                               start_date=start_date,
                                               end_date=end_date)))
-
         for key, value in data.items():
             set_attribute(self, key, value)
 
@@ -352,10 +354,16 @@ class Owner(Base):
 class Membership(Base):
     __tablename__ = 'memberships'
     id = Column(Integer, Sequence('memberships_id_seq'), primary_key=True)
-    person_id = Column(Integer, ForeignKey('persons.id'), index=True, nullable=False)
+    person_id = Column(Integer,
+                       ForeignKey('persons.id'),
+                       index=True,
+                       nullable=False)
     person = relationship('Person', back_populates='memberships')
 
-    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=False)
+    group_id = Column(Integer,
+                      ForeignKey('groups.id'),
+                      index=True,
+                      nullable=False)
     group = relationship('Group', back_populates='members')
 
     during = Column(DateRangeType)
@@ -365,12 +373,7 @@ class Membership(Base):
     def to_dict(self):
         start_date = end_date = None
         if self.during:
-            start_date = self.during.lower
-            end_date = self.during.upper
-            if is_infinite(start_date):
-                start_date = None
-            if is_infinite(end_date):
-                end_date = None
+            start_date, end_date = parse_duration(self.during)
 
         result = {'id': self.id,
                   'person_id': self.person_id,

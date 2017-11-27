@@ -1,7 +1,21 @@
-import colander
+from infinity import is_infinite
 
+import colander
 from cornice.validators import colander_validator, colander_body_validator
 
+
+def parse_duration(duration, format=None):
+    start_date = duration.lower
+    end_date = duration.upper
+    if is_infinite(start_date):
+        start_date = None
+    elif format is not None:
+        start_date = start_date.strftime(format)
+    if is_infinite(end_date):
+        end_date = None
+    elif format is not None:
+        end_date = end_date.strftime(format)
+    return start_date, end_date
 
 OKStatus = colander.SchemaNode(colander.String(),
                                validator=colander.OneOf(['ok']))

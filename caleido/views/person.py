@@ -43,6 +43,8 @@ class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                              missing=colander.drop)
     given_name = colander.SchemaNode(colander.String(), missing=colander.drop)
     initials = colander.SchemaNode(colander.String(), missing=colander.drop)
+    alternative_name = colander.SchemaNode(colander.String(),
+                                           missing=colander.drop)
     honorary = colander.SchemaNode(colander.String(), missing=colander.drop)
 
 
@@ -75,12 +77,21 @@ class PersonListingResponseSchema(colander.MappingSchema):
     @colander.instantiate()
     class body(colander.MappingSchema):
         status = OKStatus
-        @colander.instantiate()
-        class records(colander.SequenceSchema):
-            person = PersonSchema()
         total = colander.SchemaNode(colander.Int())
         offset = colander.SchemaNode(colander.Int())
         limit = colander.SchemaNode(colander.Int())
+
+        @colander.instantiate()
+        class records(colander.SequenceSchema):
+            person = PersonSchema()
+
+        @colander.instantiate()
+        class snippets(colander.SequenceSchema):
+            @colander.instantiate()
+            class snippet(colander.MappingSchema):
+                id = colander.SchemaNode(colander.Int())
+                name = colander.SchemaNode(colander.String())
+                memberships = colander.SchemaNode(colander.Int())
 
 class PersonListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -218,7 +229,7 @@ class PersonRecordAPI(object):
                 filtered_persons = from_query.cte('filtered_persons')
                 with_memberships = self.context.session.query(
                     filtered_persons,
-                    func.count(Membership.id)
+                    func.count(Membership.id).label('membership_count')
                     ).outerjoin(Membership).group_by(filtered_persons.c.id,
                                                      filtered_persons.c.name)
                 return with_memberships
@@ -232,24 +243,26 @@ class PersonRecordAPI(object):
             from_query=from_query,
             post_query_callback=query_callback,
             principals=self.request.effective_principals)
-
         schema = PersonSchema()
+        result = {'total': listing['total'],
+                  'records': [],
+                  'snippets': [],
+                  'limit': limit,
+                  'offset': offset,
+                  'status': 'ok'}
 
         if format == 'snippet':
-            records = []
-            for person_id, person_name, membership_count in listing['hits']:
-                records.append({'id': person_id,
-                                'name': person_name,
-                                'memberships': membership_count})
+            snippets = []
+            for hit in listing['hits']:
+                snippets.append({'id': hit.id,
+                                 'name': hit.name,
+                                 'memberships': hit.membership_count})
+            result['snippets'] = snippets
         else:
-            records = [schema.to_json(person.to_dict())
-                       for person in listing['hits']]
+            result['records'] = [schema.to_json(person.to_dict())
+                                 for person in listing['hits']]
 
-        return {'total': listing['total'],
-                'records': records,
-                'limit': limit,
-                'offset': offset,
-                'status': 'ok'}
+        return result
 
 person_bulk = Service(name='PersonBulk',
                      path='/api/v1/person/bulk',
