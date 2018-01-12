@@ -95,6 +95,20 @@ class GroupListingRequestSchema(colander.MappingSchema):
             validator=colander.OneOf(['record', 'snippet']),
             missing=colander.drop)
 
+class GroupSearchRequestSchema(colander.MappingSchema):
+    @colander.instantiate()
+    class querystring(colander.MappingSchema):
+        query = colander.SchemaNode(colander.String(),
+                                    missing=colander.drop)
+        offset = colander.SchemaNode(colander.Int(),
+                                   default=0,
+                                   validator=colander.Range(min=0),
+                                   missing=0)
+        limit = colander.SchemaNode(colander.Int(),
+                                    default=20,
+                                    validator=colander.Range(0, 100),
+                                    missing=20)
+
 class GroupBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class records(colander.SequenceSchema):
@@ -279,3 +293,59 @@ def group_bulk_import_view(request):
     models = request.context.put_many(models)
     request.response.status = 201
     return {'status': 'ok'}
+
+group_search = Service(name='GroupSearch',
+                     path='/api/v1/group/search',
+                     factory=ResourceFactory(GroupResource),
+                     api_security=[{'jwt':[]}],
+                     tags=['group'],
+                     cors_origins=('*', ),
+                     schema=GroupSearchRequestSchema(),
+                     validators=(colander_validator,),
+                     response_schemas={
+    '200': OKStatusResponseSchema(description='Ok'),
+    '400': ErrorResponseSchema(description='Bad Request'),
+    '401': ErrorResponseSchema(description='Unauthorized')})
+
+@group_search.get(permission='search')
+def group_search_view(request):
+    offset = request.validated['querystring']['offset']
+    limit = request.validated['querystring']['limit']
+    order_by = [Group.name.asc()]
+    query = request.validated['querystring'].get('query')
+    filters = []
+    if query:
+        filters.append(Group.name.like(query + '%'))
+    from_query = request.context.session.query(Group)
+    from_query = from_query.options(
+        Load(Group).load_only('id', 'name'))
+
+    def query_callback(from_query):
+        filtered_groups = from_query.cte('filtered_groups')
+        with_memberships = request.context.session.query(
+            filtered_groups,
+            func.count(Membership.id).label('membership_count')
+            ).outerjoin(Membership).group_by(filtered_groups.c.id,
+                                             filtered_groups.c.name)
+        return with_memberships
+
+    listing = request.context.search(
+        filters=filters,
+        offset=offset,
+        limit=limit,
+        order_by=order_by,
+        format=format,
+        from_query=from_query,
+        post_query_callback=query_callback,
+        principals=request.effective_principals)
+    snippets = []
+    for hit in listing['hits']:
+        snippets.append({'id': hit.id,
+                         'name': hit.name,
+                         'members': hit.membership_count})
+    return {'total': listing['total'],
+            'snippets': snippets,
+            'limit': limit,
+            'offset': offset,
+            'status': 'ok'}
+

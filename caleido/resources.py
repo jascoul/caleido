@@ -212,6 +212,7 @@ class PersonResource(BaseResource):
 
     def __acl__(self):
         yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'system.Authenticated', 'search')
         yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:
@@ -250,6 +251,7 @@ class GroupResource(BaseResource):
 
     def __acl__(self):
         yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'system.Authenticated', 'search')
         yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:

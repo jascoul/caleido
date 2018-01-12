@@ -318,5 +318,14 @@ class GroupRetrievalWebTest(GroupWebTest):
         assert len(out.json.get('snippets', [])) == 1
         assert out.json['snippets'][0]['members'] == 1
 
+    def test_owner_group_search(self):
+        headers = dict(Authorization='Bearer %s' % self.test_token('owner'))
+        # all users have search permission on all groups
+        out = self.api.get(
+            '/api/v1/group/search?query=Department&format=snippet',
+            headers=headers, status=200)
+        assert out.json['total'] == 1
+        assert len(out.json.get('snippets', [])) == 1
+
 
 

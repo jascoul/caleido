@@ -26,9 +26,9 @@ def deferred_account_type_validator(node, kw):
 
 def person_validator(node, kw):
     if not kw.get('given_name') and not kw.get('initials'):
-        node.name = '%s.initials' % node.name
+        node.name = '%s.given_name' % node.name
         raise colander.Invalid(
-            node, "Required: supply one of 'initials' or 'given_name'")
+            node, "Required: supply either 'initials' or 'given_name'")
 
 class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     def __init__(self, *args, **kwargs):
@@ -61,6 +61,7 @@ class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
         @colander.instantiate()
         class membership(colander.MappingSchema):
             group_id = colander.SchemaNode(colander.Integer())
+            _group_name = colander.SchemaNode(colander.String())
             start_date = colander.SchemaNode(colander.Date(),
                                              missing=colander.drop)
             end_date = colander.SchemaNode(colander.Date(),

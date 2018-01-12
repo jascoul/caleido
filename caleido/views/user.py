@@ -7,6 +7,7 @@ from caleido.resources import ResourceFactory, UserResource
 
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
+                           OKStatus,
                            JsonMappingSchemaSerializerMixin)
 
 
@@ -40,6 +41,7 @@ class UserListingResponseSchema(colander.MappingSchema):
         @colander.instantiate()
         class records(colander.SequenceSchema):
             user = UserSchema()
+        status = OKStatus
         total = colander.SchemaNode(colander.Int())
         offset = colander.SchemaNode(colander.Int())
         limit = colander.SchemaNode(colander.Int())
@@ -47,6 +49,8 @@ class UserListingResponseSchema(colander.MappingSchema):
 class UserListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
     class querystring(colander.MappingSchema):
+        query = colander.SchemaNode(colander.String(),
+                                    missing=colander.drop)
         offset = colander.SchemaNode(colander.Int(),
                                    default=0,
                                    validator=colander.Range(min=0),
@@ -55,11 +59,16 @@ class UserListingRequestSchema(colander.MappingSchema):
                                     default=20,
                                     validator=colander.Range(0, 100),
                                     missing=20)
+        format = colander.SchemaNode(
+            colander.String(),
+            validator=colander.OneOf(['record', 'snippet']),
+            missing=colander.drop)
 
 @resource(name='User',
           collection_path='/api/v1/user/records',
           path='/api/v1/user/records/{id}',
           tags=['user'],
+          cors_origins=('*', ),
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(UserResource))
 class UserAPI(object):
@@ -68,6 +77,7 @@ class UserAPI(object):
         self.context = context
 
     @view(permission='view',
+          cors_origins=('*', ),
           response_schemas={
         '200': UserResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -79,6 +89,7 @@ class UserAPI(object):
         return UserSchema().to_json(self.context.model.to_dict())
 
     @view(permission='delete',
+          cors_origins=('*', ),
           response_schemas={
         '200': StatusResponseSchema(description='Ok'),
         '401': ErrorResponseSchema(description='Unauthorized'),
@@ -91,6 +102,7 @@ class UserAPI(object):
         return {'status': 'ok'}
 
     @view(permission='add',
+          cors_origins=('*', ),
           schema=UserSchema(),
           validators=(colander_body_validator,),
           response_schemas={
@@ -111,6 +123,7 @@ class UserAPI(object):
 
 
     @view(permission='view',
+          cors_origins=('*', ),
           schema=UserListingRequestSchema(),
           validators=(colander_validator),
           response_schemas={
@@ -120,12 +133,51 @@ class UserAPI(object):
     def collection_get(self):
         offset = self.request.validated['querystring']['offset']
         limit = self.request.validated['querystring']['limit']
+        order_by = [User.userid.asc()]
+        format = self.request.validated['querystring'].get('format')
+        if format == 'record':
+            format = None
+
+        query = self.request.validated['querystring'].get('query')
+        filters = []
+        if query:
+            filters.append(User.userid.like(query + '%'))
+        listing = self.context.search(
+            filters=filters,
+            offset=offset,
+            limit=limit,
+            order_by=order_by,
+            format=format,
+            principals=self.request.effective_principals)
+
+        schema = UserSchema()
+        result = {'total': listing['total'],
+                  'records': [],
+                  'snippets': [],
+                  'limit': limit,
+                  'offset': offset,
+                  'status': 'ok'}
+
+        if format == 'snippet':
+            result['snippets'] = [schema.to_json(user.to_dict())
+                                  for user in listing['hits']]
+        else:
+            result['records'] = [schema.to_json(user.to_dict())
+                                 for user in listing['hits']]
+
+        return result
+
+
         listing = self.context.search(
             offset=offset,
             limit=limit,
             principals=self.request.effective_principals)
         schema = UserSchema()
+        format = self.request.validated['querystring'].get('format')
+        if format == 'record':
+            format = None
         return {'total': listing['total'],
                 'records': [schema.to_json(user.to_dict()) for user in listing['hits']],
                 'limit': limit,
-                'offset': offset}
+                'offset': offset,
+                'status': 'ok'}

@@ -6,6 +6,8 @@ from webtest import TestApp as WebTestApp
 
 from caleido import main
 from caleido.storage import Storage
+from caleido.models import User
+from caleido.resources import UserResource
 
 class BaseTest(unittest.TestCase):
 
@@ -34,6 +36,31 @@ class BaseTest(unittest.TestCase):
         return self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'admin', 'password': 'admin'}).json['token']
+
+    def test_token(self, user_group_password):
+        """Returns a token for owner / editor / admin / viewer
+        If the user does not exist, a new user is created
+        """
+        response = self.api.post_json(
+                '/api/v1/auth/login',
+                {'user': user_group_password, 'password': user_group_password}
+                ,status=[200, 401])
+        if response.status_code == 401:
+            context = UserResource(self.storage.registry, self.session)
+            context.put(
+                User(userid=user_group_password,
+                     credentials=user_group_password,
+                     user_group={'admin': 100,
+                                 'manager': 80,
+                                 'editor': 60,
+                                 'owner': 40,
+                                 'viewer': 10}[user_group_password]),
+                principals=['group:admin'])
+            transaction.commit()
+            response = self.api.post_json(
+                '/api/v1/auth/login',
+                {'user': user_group_password, 'password': user_group_password})
+        return response.json['token']
 
     def tearDown(self):
         testing.tearDown()

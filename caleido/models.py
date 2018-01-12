@@ -112,6 +112,7 @@ class Person(Base):
             membership = membership.to_dict()
             result['memberships'].append(
                 {'group_id': membership['group_id'],
+                 '_group_name': membership['_group_name'],
                  'start_date': membership['start_date'],
                  'end_date': membership['end_date']})
 
@@ -358,13 +359,13 @@ class Membership(Base):
                        ForeignKey('persons.id'),
                        index=True,
                        nullable=False)
-    person = relationship('Person', back_populates='memberships')
+    person = relationship('Person', back_populates='memberships', lazy='joined')
 
     group_id = Column(Integer,
                       ForeignKey('groups.id'),
                       index=True,
                       nullable=False)
-    group = relationship('Group', back_populates='members')
+    group = relationship('Group', back_populates='members', lazy='joined')
 
     during = Column(DateRangeType)
     provenance = Column(Unicode(1024))
@@ -377,7 +378,9 @@ class Membership(Base):
 
         result = {'id': self.id,
                   'person_id': self.person_id,
+                  '_person_name': self.person.name,
                   'group_id': self.group_id,
+                  '_group_name': self.group.name,
                   'start_date': start_date,
                   'end_date': end_date,
                   'provenance': self.provenance}
