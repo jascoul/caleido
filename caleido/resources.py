@@ -142,25 +142,43 @@ class BaseResource(object):
                format=None,
                from_query=None,
                post_query_callback=None,
+               apply_limits_post_query=False,
                keys_only=False):
         query = from_query or self.session.query(self.orm_class)
+
         order_by = order_by or []
         if not isinstance(order_by, list):
             order_by = [order_by]
 
         if filters:
             query = query.filter(sql.and_(*filters))
-
         acl_filters = []
+        acl_joined_tables = []
         for filter in self.acl_filters(principals):
+            if (filter.left.table.name != self.orm_class.__table__.name and
+                filter.left.table.name not in acl_joined_tables):
+                # acl requires filter on other table
+                query = query.join(filter.left.table)
+                acl_joined_tables.append(filter.left.table.name)
             acl_filters.append(filter)
         if acl_filters:
             query = query.filter(sql.or_(*acl_filters))
-        total = query.count()
-        query = query.order_by(*order_by).offset(offset).limit(limit)
+
+
+        if not apply_limits_post_query:
+            total = query.count()
+            query = query.order_by(*order_by)
+            query = query.offset(offset)
+            query = query.limit(limit)
         if post_query_callback:
             # useful for cte aggregations, etc
             query = post_query_callback(query)
+            if apply_limits_post_query:
+                total = query.count()
+                query = query.order_by(*order_by)
+                query = query.offset(offset)
+                query = query.limit(limit)
+
         if keys_only:
             query = query.options(load_only(self.key_col_name))
         return {'total': total,
@@ -216,8 +234,12 @@ class PersonResource(BaseResource):
         yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:
-            # owners can view and edit persons
+            # person owners can view and edit persons
             yield (Allow, 'owner:person:%s' % self.model.id, ['view', 'edit'])
+            for membership in self.model.memberships:
+                # group owners can view and edit persons
+                yield (Allow, 'owner:group:%s' % membership.group_id, ['view', 'edit'])
+
         elif self.model is None:
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
@@ -241,7 +263,13 @@ class PersonResource(BaseResource):
                              'group:editor'}:
                 return []
             if principal.startswith('owner:person:'):
-                filters.append(Person.person_id == principal.split(':')[-1])
+                filters.append(Person.id == principal.split(':')[-1])
+            if principal.startswith('owner:group:'):
+                filters.append(Membership.group_id == principal.split(':')[-1])
+
+        if not filters:
+            # match nothing
+            filters.append(Person.id == -1)
         return filters
 
 class GroupResource(BaseResource):
@@ -261,6 +289,7 @@ class GroupResource(BaseResource):
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
 
+
     def pre_put_hook(self, model):
         model.name = model.international_name
         if model.abbreviated_name:
@@ -275,7 +304,10 @@ class GroupResource(BaseResource):
                              'group:editor'}:
                 return []
             if principal.startswith('owner:group:'):
-                filters.append(Group.group_id == principal.split(':')[-1])
+                filters.append(Group.id == int(principal.split(':')[-1]))
+        if not filters:
+            # match nothing
+            filters.append(Group.id == -1)
         return filters
 
 

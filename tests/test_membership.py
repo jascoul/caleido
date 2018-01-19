@@ -116,12 +116,10 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
              headers=headers,
              status=201)
         joe_id = out.json['id']
-        assert out.json['memberships'] == [{'group_id': self.corp_id,
-                                            'start_date': '2017-01-01'}]
         out = self.api.get('/api/v1/person/records/%s' % joe_id,
                            headers=headers)
-        assert out.json['memberships'] == [{'group_id': self.corp_id,
-                                            'start_date': '2017-01-01'}]
+        assert out.json['memberships'][0]['group_id'] == self.corp_id
+        assert out.json['memberships'][0]['start_date'] == '2017-01-01'
         out = self.api.put_json(
             '/api/v1/person/records/%s' % joe_id,
             {'id': joe_id,
@@ -135,9 +133,10 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
             status=200)
         out = self.api.get('/api/v1/person/records/%s' % joe_id,
                            headers=headers)
-        assert out.json['memberships'] == [{'group_id': self.corp_id,
-                                            'start_date': '2017-01-01',
-                                            'end_date': '2017-12-31'}]
+        assert out.json['memberships'][0]['group_id'] == self.corp_id
+        assert out.json['memberships'][0]['start_date'] == '2017-01-01'
+        assert out.json['memberships'][0]['end_date'] == '2017-12-31'
+
         # note that if we update the record without specifying the memberships
         # then the membersips should remain intact
         out = self.api.put_json(
@@ -150,9 +149,9 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
             status=200)
         out = self.api.get('/api/v1/person/records/%s' % joe_id,
                            headers=headers)
-        assert out.json['memberships'] == [{'group_id': self.corp_id,
-                                            'start_date': '2017-01-01',
-                                            'end_date': '2017-12-31'}]
+        assert out.json['memberships'][0]['group_id'] == self.corp_id
+        assert out.json['memberships'][0]['start_date'] == '2017-01-01'
+        assert out.json['memberships'][0]['end_date'] == '2017-12-31'
 
 
     def test_person_owners_can_view_and_edit(self):
@@ -172,7 +171,7 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
              'user_group': 40,
              'owns': [{'person_id': self.john_id}]},
             headers=headers, status=201)
-        assert out.json['owns'] == [{'person_id': self.john_id}]
+        assert out.json['owns'][0]['person_id'] == self.john_id
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'john', 'password': 'john'}).json['token']
@@ -210,7 +209,7 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
              'user_group': 40,
              'owns': [{'group_id': self.corp_id}]},
             headers=headers, status=201)
-        assert out.json['owns'] == [{'group_id': self.corp_id}]
+        assert out.json['owns'][0]['group_id'] == self.corp_id
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'john', 'password': 'john'}).json['token']

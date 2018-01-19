@@ -61,7 +61,8 @@ class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
         @colander.instantiate()
         class membership(colander.MappingSchema):
             group_id = colander.SchemaNode(colander.Integer())
-            _group_name = colander.SchemaNode(colander.String())
+            _group_name = colander.SchemaNode(colander.String(),
+                                              missing=colander.drop)
             start_date = colander.SchemaNode(colander.Date(),
                                              missing=colander.drop)
             end_date = colander.SchemaNode(colander.Date(),
@@ -111,6 +112,20 @@ class PersonListingRequestSchema(colander.MappingSchema):
             colander.String(),
             validator=colander.OneOf(['record', 'snippet']),
             missing=colander.drop)
+
+class PersonSearchRequestSchema(colander.MappingSchema):
+    @colander.instantiate()
+    class querystring(colander.MappingSchema):
+        query = colander.SchemaNode(colander.String(),
+                                    missing=colander.drop)
+        offset = colander.SchemaNode(colander.Int(),
+                                   default=0,
+                                   validator=colander.Range(min=0),
+                                   missing=0)
+        limit = colander.SchemaNode(colander.Int(),
+                                    default=20,
+                                    validator=colander.Range(0, 100),
+                                    missing=20)
 
 class PersonBulkRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -218,7 +233,7 @@ class PersonRecordAPI(object):
         query = self.request.validated['querystring'].get('query')
         filters = []
         if query:
-            filters.append(Person.name.like(query + '%'))
+            filters.append(Person.family_name.like(query + '%'))
         from_query=None
         query_callback = None
         if format == 'snippet':
@@ -265,6 +280,8 @@ class PersonRecordAPI(object):
 
         return result
 
+
+
 person_bulk = Service(name='PersonBulk',
                      path='/api/v1/person/bulk',
                      factory=ResourceFactory(PersonResource),
@@ -294,3 +311,59 @@ def person_bulk_import_view(request):
     models = request.context.put_many(models)
     request.response.status = 201
     return {'status': 'ok'}
+
+person_search = Service(name='PersonSearch',
+                     path='/api/v1/person/search',
+                     factory=ResourceFactory(PersonResource),
+                     api_security=[{'jwt':[]}],
+                     tags=['person'],
+                     cors_origins=('*', ),
+                     schema=PersonSearchRequestSchema(),
+                     validators=(colander_validator,),
+                     response_schemas={
+    '200': OKStatusResponseSchema(description='Ok'),
+    '400': ErrorResponseSchema(description='Bad Request'),
+    '401': ErrorResponseSchema(description='Unauthorized')})
+
+@person_search.get(permission='search')
+def person_search_view(request):
+    offset = request.validated['querystring']['offset']
+    limit = request.validated['querystring']['limit']
+    order_by = [Person.name.asc()]
+    query = request.validated['querystring'].get('query')
+    filters = []
+    if query:
+        filters.append(Person.name.like(query + '%'))
+    from_query = request.context.session.query(Person)
+    from_query = from_query.options(
+        Load(Person).load_only('id', 'name'))
+
+    def query_callback(from_query):
+        filtered_persons = from_query.cte('filtered_persons')
+        with_memberships = request.context.session.query(
+            filtered_persons,
+            func.count(Membership.id).label('membership_count')
+            ).outerjoin(Membership).group_by(filtered_persons.c.id,
+                                             filtered_persons.c.name)
+        return with_memberships
+
+    listing = request.context.search(
+        filters=filters,
+        offset=offset,
+        limit=limit,
+        order_by=order_by,
+        format=format,
+        from_query=from_query,
+        post_query_callback=query_callback,
+        principals=request.effective_principals)
+    snippets = []
+    for hit in listing['hits']:
+        snippets.append({'id': hit.id,
+                         'name': hit.name,
+                         'members': hit.membership_count})
+    return {'total': listing['total'],
+            'snippets': snippets,
+            'limit': limit,
+            'offset': offset,
+            'status': 'ok'}
+

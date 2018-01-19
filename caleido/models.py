@@ -91,6 +91,7 @@ class Person(Base):
     honorary = Column(Unicode(64))
     alternative_name = Column(UnicodeText)
 
+    owners = relationship('Owner', back_populates='person')
     memberships = relationship('Membership',
                                back_populates='person',
                                cascade='all, delete-orphan')
@@ -229,6 +230,7 @@ class Group(Base):
     abbreviated_name = Column(Unicode(128))
 
     members = relationship('Membership', back_populates='group')
+    owners = relationship('Owner', back_populates='group')
     accounts = relationship('GroupAccount',
                             back_populates='group',
                             cascade='all, delete-orphan')
@@ -292,12 +294,15 @@ class User(Base):
                   'userid': self.userid,
                   'credentials': self.credentials.hash.decode('utf8')}
         for owner in self.owns:
+            owner_data = owner.to_dict()
             if owner.person_id:
                 result.setdefault('owns', []).append(
-                    {'person_id': owner.person_id})
+                    {'person_id': owner.person_id,
+                     '_person_name': owner_data['_person_name']})
             elif owner.group_id:
                 result.setdefault('owns', []).append(
-                    {'group_id': owner.group_id})
+                    {'group_id': owner.group_id,
+                     '_group_name': owner_data['_group_name']})
         return result
 
 
@@ -347,10 +352,22 @@ class Owner(Base):
     person_id = Column(Integer,
                        ForeignKey('persons.id'),
                        index=True)
+    person = relationship('Person', back_populates='owners')
     group_id = Column(Integer,
                       ForeignKey('groups.id'),
                       index=True)
+    group = relationship('Group', back_populates='owners')
 
+    def to_dict(self):
+        result = {'id': self.id,
+                  'user_id': self.user_id}
+        if self.person_id:
+            result['person_id'] = self.person_id
+            result['_person_name'] = self.person.name
+        elif self.group_id:
+            result['group_id'] = self.group_id
+            result['_group_name'] = self.group.name
+        return result
 
 class Membership(Base):
     __tablename__ = 'memberships'

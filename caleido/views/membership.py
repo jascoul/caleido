@@ -18,7 +18,11 @@ from caleido.utils import (ErrorResponseSchema,
 class MembershipSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     id = colander.SchemaNode(colander.Int())
     person_id = colander.SchemaNode(colander.Int())
+    _person_name = colander.SchemaNode(colander.String(),
+                                       missing=colander.drop)
     group_id = colander.SchemaNode(colander.Int())
+    _group_name = colander.SchemaNode(colander.String(),
+                                      missing=colander.drop)
     start_date = colander.SchemaNode(colander.Date(),
                                      missing=colander.drop)
     end_date = colander.SchemaNode(colander.Date(),
@@ -68,6 +72,8 @@ class MembershipListingRequestSchema(colander.MappingSchema):
                                     default=20,
                                     validator=colander.Range(0, 100),
                                     missing=20)
+        query = colander.SchemaNode(colander.String(),
+                                    missing=colander.drop)
         person_id = colander.SchemaNode(colander.Int(),
                                         missing=colander.drop)
         group_id = colander.SchemaNode(colander.Int(),
@@ -86,6 +92,7 @@ class MembershipBulkRequestSchema(colander.MappingSchema):
           collection_path='/api/v1/membership/records',
           path='/api/v1/membership/records/{id}',
           tags=['membership'],
+          cors_origins=('*', ),
           api_security=[{'jwt':[]}],
           factory=ResourceFactory(MembershipResource))
 class MembershipRecordAPI(object):
@@ -171,19 +178,20 @@ class MembershipRecordAPI(object):
         '400': ErrorResponseSchema(description='Bad Request'),
         '401': ErrorResponseSchema(description='Unauthorized')})
     def collection_get(self):
-        offset = self.request.validated['querystring']['offset']
-        limit = self.request.validated['querystring']['limit']
-        person_id = self.request.validated['querystring'].get('person_id')
-        group_id = self.request.validated['querystring'].get('group_id')
-        format = self.request.validated['querystring'].get('format')
+        qs = self.request.validated['querystring']
+        offset = qs['offset']
+        limit = qs['limit']
+        person_id = qs.get('person_id')
+        group_id = qs.get('group_id')
+        format = qs.get('format')
         order_by = []
-
+        query = qs.get('query')
         filters = []
         if person_id:
             filters.append(Membership.person_id == person_id)
         if group_id:
             filters.append(Membership.group_id == group_id)
-
+        cte_total = None
         from_query=None
         query_callback = None
         if format == 'record':
@@ -196,8 +204,9 @@ class MembershipRecordAPI(object):
                     filtered_members,
                     Person.name.label('person_name'),
                     Group.name.label('group_name')).join(Person).join(Group)
-                return with_members
-
+                if query and group_id:
+                    with_members = with_members.filter(Person.family_name.like(query + '%'))
+                return with_members.order_by(Person.family_name)
 
         listing = self.context.search(
             from_query=from_query,
@@ -206,9 +215,10 @@ class MembershipRecordAPI(object):
             limit=limit,
             order_by=order_by,
             post_query_callback=query_callback,
+            apply_limits_post_query={'snippet': True}.get(format, False),
             principals=self.request.effective_principals)
         schema = MembershipSchema()
-        result = {'total': listing['total'],
+        result = {'total': listing['total'] or cte_total,
                   'records': [],
                   'snippets': [],
                   'limit': limit,

@@ -37,7 +37,7 @@ class BaseTest(unittest.TestCase):
             '/api/v1/auth/login',
             {'user': 'admin', 'password': 'admin'}).json['token']
 
-    def test_token(self, user_group_password):
+    def generate_test_token(self, user_group_password):
         """Returns a token for owner / editor / admin / viewer
         If the user does not exist, a new user is created
         """

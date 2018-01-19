@@ -5,6 +5,7 @@ from cornice.validators import colander_body_validator, colander_validator
 from caleido.models import User
 from caleido.resources import ResourceFactory, UserResource
 
+from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
                            StatusResponseSchema,
                            OKStatus,
@@ -28,8 +29,12 @@ class UserSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
         class owner(colander.MappingSchema):
             person_id = colander.SchemaNode(colander.Integer(),
                                             missing=colander.drop)
+            _person_name = colander.SchemaNode(colander.String(),
+                                               missing=colander.drop)
             group_id = colander.SchemaNode(colander.Integer(),
                                            missing=colander.drop)
+            _group_name = colander.SchemaNode(colander.String(),
+                                              missing=colander.drop)
 
 class UserResponseSchema(colander.MappingSchema,
                          JsonMappingSchemaSerializerMixin):
@@ -87,6 +92,34 @@ class UserAPI(object):
     def get(self):
         "Retrieve a User"
         return UserSchema().to_json(self.context.model.to_dict())
+
+
+    @view(permission='edit',
+          schema=UserSchema(),
+          validators=(colander_body_validator,),
+          cors_origins=('*', ),
+          response_schemas={
+        '200': UserResponseSchema(description='Ok'),
+        '401': ErrorResponseSchema(description='Unauthorized'),
+        '403': ErrorResponseSchema(description='Forbidden'),
+        '404': ErrorResponseSchema(description='Not Found'),
+        })
+    def put(self):
+        "Modify a User"
+        body = self.request.validated
+        body['id'] = int(self.request.matchdict['id'])
+        if body['credentials'].startswith('$pbkdf2'):
+            del body['credentials']
+
+        self.context.model.update_dict(body)
+        try:
+            self.context.put()
+        except StorageError as err:
+            self.request.errors.status = 400
+            self.request.errors.add('body', err.location, str(err))
+            return
+        return UserSchema().to_json(self.context.model.to_dict())
+
 
     @view(permission='delete',
           cors_origins=('*', ),

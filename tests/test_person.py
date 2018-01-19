@@ -37,9 +37,9 @@ class PersonWebTest(BaseTest):
                                  {'family_name': 'Doe'},
                                  headers=headers,
                                  status=400)
-        assert out.json['errors'][0]['name'] == 'initials'
+        assert out.json['errors'][0]['name'] == 'given_name'
         assert out.json['errors'][0]['description'] == (
-            "Required: supply one of 'initials' or 'given_name'")
+            "Required: supply either 'initials' or 'given_name'")
         out = self.api.post_json('/api/v1/person/records',
                                  {'family_name': 'Doe', 'given_name': 'Joe'},
                                  headers=headers,
@@ -224,7 +224,8 @@ class PersonAuthorzationWebTest(BaseTest):
              'user_group': 40,
              'owns': [{'person_id': person_id}]},
             headers=headers, status=201)
-        assert out.json['owns'] == [{'person_id': person_id}]
+        assert out.json['owns'][0]['person_id'] == person_id
+
         token = self.api.post_json(
             '/api/v1/auth/login',
             {'user': 'john', 'password': 'john'}).json['token']
