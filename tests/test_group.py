@@ -330,5 +330,27 @@ class GroupRetrievalWebTest(GroupWebTest):
         assert out.json['total'] == 1
         assert len(out.json.get('snippets', [])) == 1
 
+    def test_add_parent_group_and_filter_listing_on_parent(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json('/api/v1/group/records',
+                                 {'international_name': 'Corp.',
+                                  'type': 'organisation'},
+                                 headers=headers,
+                                 status=201)
+        corp_id = out.json['id']
+        out = self.api.post_json('/api/v1/group/records',
+                                 {'international_name': 'Dept.',
+                                  'parent_id': corp_id,
+                                  'type': 'organisation'},
+                                 headers=headers,
+                                 status=201)
+        assert out.json.get('parent_id') == corp_id
+        dept_id = out.json['id']
+        # filter groups on parent id
+        out = self.api.get('/api/v1/group/records?filter_parent=%s' % corp_id,
+                           headers=headers, status=200)
+        assert out.json['total'] == 1
+        assert out.json['records'][0]['id'] == dept_id
+
 
 

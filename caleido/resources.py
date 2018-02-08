@@ -19,8 +19,8 @@ class ResourceFactory(object):
     def __init__(self, resource_class):
         self._class = resource_class
 
-    def __call__(self, request):
-        key = request.matchdict.get('id')
+    def __call__(self, request, key=None):
+        key = key or request.matchdict.get('id')
         resource = self._class(request.registry,
                                request.dbsession,
                                key)
@@ -310,6 +310,29 @@ class GroupResource(BaseResource):
             filters.append(Group.id == -1)
         return filters
 
+    def child_groups(self):
+        query = sql.text('''
+        WITH RECURSIVE rel_tree AS (
+          SELECT id,
+                 parent_id,
+                 1 AS level,
+                 ARRAY[id] AS path_info,
+                 false AS cyclic
+          FROM groups
+          WHERE parent_id = :group_id
+          UNION ALL
+          SELECT c.id,
+                 c.parent_id,
+                 p.level + 1,
+                 p.path_info||c.id,
+                 c.id = ANY(p.path_info) as cyclic
+          FROM groups c
+          JOIN rel_tree p ON c.parent_id = p.id AND NOT cyclic)
+        SELECT array_agg(DISTINCT path)
+        FROM rel_tree, unnest(path_info) path
+        ''')
+        return self.session.execute(
+            query, dict(group_id=self.model.id)).scalar()
 
 class MembershipResource(BaseResource):
     orm_class = Membership

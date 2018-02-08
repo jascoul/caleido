@@ -1,10 +1,11 @@
 import colander
+import sqlalchemy as sql
 from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
 from caleido.models import Membership, Person, Group
-from caleido.resources import ResourceFactory, MembershipResource
+from caleido.resources import ResourceFactory, MembershipResource, GroupResource
 
 from caleido.exceptions import StorageError
 from caleido.utils import (ErrorResponseSchema,
@@ -78,6 +79,8 @@ class MembershipListingRequestSchema(colander.MappingSchema):
                                         missing=colander.drop)
         group_id = colander.SchemaNode(colander.Int(),
                                        missing=colander.drop)
+        transitive = colander.SchemaNode(colander.Boolean(),
+                                       missing=False)
         format = colander.SchemaNode(
             colander.String(),
             validator=colander.OneOf(['record', 'snippet']),
@@ -190,7 +193,17 @@ class MembershipRecordAPI(object):
         if person_id:
             filters.append(Membership.person_id == person_id)
         if group_id:
-            filters.append(Membership.group_id == group_id)
+            if qs['transitive']:
+                # find
+                group_ids = [group_id]
+                group_ids.extend(ResourceFactory(GroupResource)(
+                    self.request, group_id).child_groups())
+                filters.append(
+                    sql.or_(*[Membership.group_id == g for g in group_ids]))
+            else:
+                filters.append(Membership.group_id == group_id)
+
+
         cte_total = None
         from_query=None
         query_callback = None

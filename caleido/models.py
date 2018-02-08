@@ -229,11 +229,17 @@ class Group(Base):
     native_name = Column(Unicode(256))
     abbreviated_name = Column(Unicode(128))
 
+    parent_id = Column(Integer,
+                      ForeignKey('groups.id'),
+                      index=True,
+                      nullable=True)
+
     members = relationship('Membership', back_populates='group')
     owners = relationship('Owner', back_populates='group')
     accounts = relationship('GroupAccount',
                             back_populates='group',
                             cascade='all, delete-orphan')
+
 
     def to_dict(self):
         result = {}

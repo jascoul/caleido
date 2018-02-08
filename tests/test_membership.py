@@ -320,5 +320,43 @@ class MembershipRetrievalWebTest(MembershipWebTest):
         assert out.json['snippets'][0]['person_name'] == 'Doe (Jane)'
         assert out.json['snippets'][0]['group_name'] == 'Corp.'
 
+    def test_sub_group_memberships(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json('/api/v1/person/records',
+                                 {'family_name': 'Blow',
+                                  'given_name': 'Bob'},
+                                 headers=headers,
+                                 status=201)
+        self.bob_id = out.json['id']
+        self.api.put_json('/api/v1/group/records/%s' % self.dept_id,
+                          {'international_name': 'Department A',
+                           'parent_id': self.corp_id,
+                           'id': self.dept_id,
+                           'type': 'organisation'},
+                          headers=headers,
+                          status=200)
 
+        out = self.api.post_json('/api/v1/group/records',
+                                 {'international_name': 'Department X',
+                                  'parent_id': self.dept_id,
+                                  'type': 'organisation'},
+                                 headers=headers,
+                                 status=201)
+        self.deptx_id = out.json['id']
+        self.api.post_json('/api/v1/membership/records',
+                           {'person_id': self.bob_id,
+                            'group_id': self.deptx_id,
+                            'start_date': '2018-01-01',
+                            'end_date': '2018-12-31'},
+                           headers=headers,
+                           status=201)
 
+        out = self.api.get(
+            '/api/v1/membership/records?group_id=%s' % self.corp_id ,
+            headers=headers, status=200)
+        assert self.bob_id not in [r['person_id'] for r in out.json['records']]
+        # add subgroups in output when passing transitive flag
+        out = self.api.get(
+            '/api/v1/membership/records?group_id=%s&transitive=true' % self.corp_id ,
+            headers=headers, status=200)
+        assert self.bob_id in [r['person_id'] for r in out.json['records']]

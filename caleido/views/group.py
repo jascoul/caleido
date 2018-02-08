@@ -39,6 +39,7 @@ class GroupSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                       missing=colander.drop)
     abbreviated_name = colander.SchemaNode(colander.String(),
                                            missing=colander.drop)
+    parent_id = colander.SchemaNode(colander.Int(), missing=colander.drop)
 
     @colander.instantiate(missing=colander.drop)
     class accounts(colander.SequenceSchema):
@@ -82,6 +83,8 @@ class GroupListingRequestSchema(colander.MappingSchema):
                                     missing=colander.drop)
         filter_type = colander.SchemaNode(colander.String(),
                                           missing=colander.drop)
+        filter_parent = colander.SchemaNode(colander.Int(),
+                                            missing=colander.drop)
         offset = colander.SchemaNode(colander.Int(),
                                    default=0,
                                    validator=colander.Range(min=0),
@@ -218,6 +221,10 @@ class GroupRecordAPI(object):
         if filter_type:
             filter_types = filter_type.split(',')
             filters.append(sql.or_(*[Group.type == f for f in filter_types]))
+        filter_parent = self.request.validated['querystring'].get('filter_parent')
+        if filter_parent:
+            filters.append(Group.parent_id == filter_parent)
+
         from_query=None
         query_callback = None
         if format == 'snippet':
