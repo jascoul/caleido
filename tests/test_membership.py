@@ -1,3 +1,6 @@
+import os
+import unittest
+
 import transaction
 
 from core import BaseTest
@@ -320,6 +323,7 @@ class MembershipRetrievalWebTest(MembershipWebTest):
         assert out.json['snippets'][0]['person_name'] == 'Doe (Jane)'
         assert out.json['snippets'][0]['group_name'] == 'Corp.'
 
+    @unittest.skipIf("TRAVIS" in os.environ, "Skipping this test on Travis CI.")
     def test_sub_group_memberships(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json('/api/v1/person/records',
