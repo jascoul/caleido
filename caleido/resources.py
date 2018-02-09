@@ -329,7 +329,7 @@ class GroupResource(BaseResource):
           FROM groups c
           JOIN rel_tree p ON c.parent_id = p.id AND NOT cyclic)
         SELECT array_agg(DISTINCT path)
-        FROM rel_tree, unnest(path_info) path
+        FROM rel_tree, unnest(rel_tree.path_info) path
         ''')
         return self.session.execute(
             query, dict(group_id=self.model.id)).scalar() or []
