@@ -40,6 +40,8 @@ class GroupSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     abbreviated_name = colander.SchemaNode(colander.String(),
                                            missing=colander.drop)
     parent_id = colander.SchemaNode(colander.Int(), missing=colander.drop)
+    _parent_name = colander.SchemaNode(colander.String(),
+                                       missing=colander.drop)
 
     @colander.instantiate(missing=colander.drop)
     class accounts(colander.SequenceSchema):
@@ -74,6 +76,7 @@ class GroupListingResponseSchema(colander.MappingSchema):
             class snippet(colander.MappingSchema):
                 id = colander.SchemaNode(colander.Int())
                 name = colander.SchemaNode(colander.String())
+                type = colander.SchemaNode(colander.String())
                 members = colander.SchemaNode(colander.Int())
 
 class GroupListingRequestSchema(colander.MappingSchema):
@@ -230,7 +233,7 @@ class GroupRecordAPI(object):
         if format == 'snippet':
             from_query = self.context.session.query(Group)
             from_query = from_query.options(
-                Load(Group).load_only('id', 'name'))
+                Load(Group).load_only('id', 'type', 'name'))
 
             def query_callback(from_query):
                 filtered_groups = from_query.cte('filtered_groups')
@@ -238,6 +241,7 @@ class GroupRecordAPI(object):
                     filtered_groups,
                     func.count(Membership.id).label('membership_count')
                     ).outerjoin(Membership).group_by(filtered_groups.c.id,
+                                                     filtered_groups.c.type,
                                                      filtered_groups.c.name)
                 return with_memberships
 
@@ -263,6 +267,7 @@ class GroupRecordAPI(object):
             for hit in listing['hits']:
                 snippets.append({'id': hit.id,
                                  'name': hit.name,
+                                 'type': hit.type,
                                  'members': hit.membership_count})
             result['snippets'] = snippets
         else:

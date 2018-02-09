@@ -332,7 +332,7 @@ class GroupResource(BaseResource):
         FROM rel_tree, unnest(path_info) path
         ''')
         return self.session.execute(
-            query, dict(group_id=self.model.id)).scalar()
+            query, dict(group_id=self.model.id)).scalar() or []
 
 class MembershipResource(BaseResource):
     orm_class = Membership

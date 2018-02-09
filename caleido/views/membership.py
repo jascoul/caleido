@@ -1,3 +1,5 @@
+
+from intervals import DateInterval
 import colander
 import sqlalchemy as sql
 from cornice.resource import resource, view
@@ -81,6 +83,10 @@ class MembershipListingRequestSchema(colander.MappingSchema):
                                        missing=colander.drop)
         transitive = colander.SchemaNode(colander.Boolean(),
                                        missing=False)
+        start_date = colander.SchemaNode(colander.Date(),
+                                         missing=colander.drop)
+        end_date = colander.SchemaNode(colander.Date(),
+                                       missing=colander.drop)
         format = colander.SchemaNode(
             colander.String(),
             validator=colander.OneOf(['record', 'snippet']),
@@ -192,6 +198,11 @@ class MembershipRecordAPI(object):
         filters = []
         if person_id:
             filters.append(Membership.person_id == person_id)
+        if qs.get('start_date') or qs.get('end_date'):
+            duration = DateInterval([qs.get('start_date'),
+                                     qs.get('end_date')])
+            filters.append(Membership.during.op('&&')(duration))
+
         if group_id:
             if qs['transitive']:
                 # find
@@ -219,6 +230,7 @@ class MembershipRecordAPI(object):
                     Group.name.label('group_name')).join(Person).join(Group)
                 if query and group_id:
                     with_members = with_members.filter(Person.family_name.like(query + '%'))
+                print(str(with_members))
                 return with_members.order_by(Person.family_name)
 
         listing = self.context.search(

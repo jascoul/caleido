@@ -234,6 +234,8 @@ class Group(Base):
                       index=True,
                       nullable=True)
 
+    parent = relationship('Group', remote_side=[id], lazy='joined')
+
     members = relationship('Membership', back_populates='group')
     owners = relationship('Owner', back_populates='group')
     accounts = relationship('GroupAccount',
@@ -247,6 +249,8 @@ class Group(Base):
             if prop.startswith('_'):
                 continue
             result[prop] = getattr(self, prop)
+        if self.parent_id:
+            result['_parent_name'] = self.parent.name
 
         result['accounts'] = [{'type': a.type, 'value': a.value}
                               for a in self.accounts]
@@ -270,6 +274,8 @@ class Group(Base):
                                                   group_id=data.get('id')))
 
         for key, value in data.items():
+            if key.startswith('_'):
+                continue
             set_attribute(self, key, value)
 
     @classmethod

@@ -7,7 +7,7 @@ from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Person, Membership
+from caleido.models import Person, Membership, Group
 from caleido.resources import ResourceFactory, PersonResource
 
 from caleido.exceptions import StorageError
@@ -94,6 +94,7 @@ class PersonListingResponseSchema(colander.MappingSchema):
                 id = colander.SchemaNode(colander.Int())
                 name = colander.SchemaNode(colander.String())
                 memberships = colander.SchemaNode(colander.Int())
+                groups = colander.SchemaNode(colander.String())
 
 class PersonListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -245,9 +246,11 @@ class PersonRecordAPI(object):
                 filtered_persons = from_query.cte('filtered_persons')
                 with_memberships = self.context.session.query(
                     filtered_persons,
-                    func.count(Membership.id).label('membership_count')
-                    ).outerjoin(Membership).group_by(filtered_persons.c.id,
-                                                     filtered_persons.c.name)
+                    func.count(Membership.id).label('membership_count'),
+                    func.array_agg(Group.name.distinct()).label('groups')
+                    ).outerjoin(Membership).outerjoin(Group).group_by(
+                    filtered_persons.c.id,
+                    filtered_persons.c.name)
                 return with_memberships
 
         listing = self.context.search(
@@ -270,9 +273,11 @@ class PersonRecordAPI(object):
         if format == 'snippet':
             snippets = []
             for hit in listing['hits']:
-                snippets.append({'id': hit.id,
-                                 'name': hit.name,
-                                 'memberships': hit.membership_count})
+                snippets.append(
+                    {'id': hit.id,
+                     'name': hit.name,
+                     'groups': ', '.join(sorted([g for g in hit.groups if g])),
+                     'memberships': hit.membership_count})
             result['snippets'] = snippets
         else:
             result['records'] = [schema.to_json(person.to_dict())
