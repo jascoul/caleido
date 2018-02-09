@@ -325,6 +325,9 @@ class MembershipRetrievalWebTest(MembershipWebTest):
 
     def test_sub_group_memberships(self):
         if 'TRAVIS' in os.environ:
+            # for some reason this errors in Travis, but not locally.
+            # it appears the same version of postgresql is used (9.5.10)
+            # but apparently there are differences.
             return
 
         headers = dict(Authorization='Bearer %s' % self.admin_token())
