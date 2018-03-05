@@ -248,6 +248,8 @@ class PersonAuthorzationWebTest(BaseTest):
             '/api/v1/person/records/%s' % person_id,
              headers=john_headers, status=403)
 
+
+
     def test_person_bulk_import(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         records = {'records': [
@@ -279,6 +281,49 @@ class PersonAuthorzationWebTest(BaseTest):
         assert out.json['status'] == 'ok'
         out = self.api.get('/api/v1/person/records/2', headers=headers)
         assert out.json['initials'] == 'J.'
+
+class PersonMembersTest(PersonWebTest):
+    def setUp(self):
+        super(PersonMembersTest, self).setUp()
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json('/api/v1/person/records',
+                                 {'family_name': 'Doe',
+                                  'given_name': 'John'},
+                                 headers=headers,
+                                 status=201)
+        self.john_id = out.json['id']
+        out = self.api.post_json('/api/v1/group/records',
+                                 {'international_name': 'Corp.',
+                                  'type': 'organisation'},
+                                 headers=headers,
+                                 status=201)
+        self.corp_id = out.json['id']
+
+    def test_adding_inline_membership(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.put_json('/api/v1/person/records/%s' % self.john_id,
+                                 {'family_name': 'Doe',
+                                  'given_name': 'John',
+                                  'id': self.john_id,
+                                  'memberships': [{'group_id': self.corp_id}]},
+                                 headers=headers,
+                                 status=200)
+        assert len(out.json['memberships']) == 1
+
+    def test_adding_inline_membership_as_owner(self):
+        # XXX this should not be allowed, but it is to hard to implement
+        # maybe we should deny inlined membership changes.
+        # It is too much hastle.
+        headers = dict(Authorization='Bearer %s' % self.generate_test_token(
+            'owner', owners=[{'person_id': self.john_id}]))
+        out = self.api.put_json('/api/v1/person/records/%s' % self.john_id,
+                                 {'family_name': 'Doe',
+                                  'given_name': 'John',
+                                  'id': self.john_id,
+                                  'memberships': [{'group_id': self.corp_id}]},
+                                 headers=headers,
+                                 status=200)
+        assert len(out.json['memberships']) == 1
 
 class PersonRetrievalWebTest(PersonWebTest):
     def setUp(self):
@@ -331,4 +376,12 @@ class PersonRetrievalWebTest(PersonWebTest):
         assert out.json['snippets'][0]['memberships'] == 1
 
 
+    def test_owner_person_search(self):
+        headers = dict(Authorization='Bearer %s' % self.generate_test_token('owner'))
+        # all users have search permission on all persons
+        out = self.api.get(
+            '/api/v1/person/search?query=Doe&format=snippet',
+            headers=headers, status=200)
+        assert out.json['total'] == 1
+        assert len(out.json.get('snippets', [])) == 1
 

@@ -62,6 +62,9 @@ def client_config(request):
     group_types = [
         {'id': v['key'], 'label': v['label']}
         for v in TypeResource(request.dbsession, 'group').to_dict()['values']]
+    work_types = [
+        {'id': v['key'], 'label': v['label']}
+        for v in TypeResource(request.dbsession, 'work').to_dict()['values']]
     group_account_types = [
         {'id': v['key'], 'label': v['label']}
         for v in TypeResource(request.dbsession, 'groupAccount').to_dict()['values']]
@@ -116,6 +119,7 @@ def client_config(request):
         'settings': {'person': {'account_types': person_account_types},
                      'group': {'account_types': group_account_types,
                                'type': group_types},
+                     'work': {'type': work_types},
                      'user': {'type': user_group_types},
                      },
 

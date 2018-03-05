@@ -157,7 +157,7 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
         assert out.json['memberships'][0]['end_date'] == '2017-12-31'
 
 
-    def test_person_owners_can_view_and_edit(self):
+    def test_person_owners_can_view_but_not_edit(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json('/api/v1/membership/records',
                                  {'person_id': self.john_id,
@@ -182,18 +182,18 @@ class MembershipAuthorzationWebTest(MembershipWebTest):
         # we can view the metadata
         out = self.api.get('/api/v1/membership/records/%s' % membership_id,
                            headers=john_headers)
-        # and are allowed to edit it
+        # but we are not allowed to edit it
         out = self.api.put_json('/api/v1/membership/records/%s' % membership_id,
                                 {'id': membership_id,
                                  'person_id': self.john_id,
                                  'group_id': self.corp_id,
                                  'start_date': '2015-01-01'},
-                                headers=headers,
-                                status=200)
-        # owners can also delete
+                                headers=john_headers,
+                                status=403)
+        # person owners can also not delete records
         self.api.delete(
             '/api/v1/membership/records/%s' % membership_id,
-             headers=john_headers, status=200)
+             headers=john_headers, status=403)
 
     def test_group_owners_can_view_and_edit(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())

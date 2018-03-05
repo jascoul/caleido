@@ -23,19 +23,9 @@ Base = declarative_base()
 
 from caleido.utils import parse_duration
 
-class Kind(Base):
-    __tablename__ = 'kind_schemes'
-    key = Column(Unicode(32), primary_key=True)
-    label = Column(Unicode(128))
-
-
 class WorkType(Base):
     __tablename__ = 'work_type_schemes'
     key = Column(Unicode(32), primary_key=True)
-    kind = Column(Unicode(32),
-                  ForeignKey('kind_schemes.key'),
-                  nullable=False,
-                  primary_key=True)
     label = Column(Unicode(128))
 
 
@@ -50,33 +40,64 @@ class UserGroup(Base):
 class ContributorRole(Base):
     __tablename__ = 'contributor_role_schemes'
     key = Column(Unicode(32), primary_key=True)
-    kind = Column(Unicode(32),
-                  ForeignKey('kind_schemes.key'),
-                  nullable=False,
-                  primary_key=True)
     label = Column(Unicode(128))
 
 
 class Work(Base):
     __tablename__ = 'works'
-    __table_args__ = (
-        ForeignKeyConstraint(['type', 'kind'],
-                             ['work_type_schemes.key',
-                              'work_type_schemes.kind']),
-        )
     id = Column(Integer, Sequence('works_id_seq'), primary_key=True)
-    kind = Column(Unicode(32),
-                  ForeignKey('kind_schemes.key'),
-                  nullable=False)
     type = Column(Unicode(32),
+                  ForeignKey('work_type_schemes.key'),
                   nullable=False)
     title = Column(UnicodeText, nullable=False)
-    date = Column(Date, nullable=False)
+    issued = Column(Date, nullable=False)
     during = Column(DateRangeType, nullable=False)
     contributors = relationship('Contributor',
                                 back_populates='work',
                                 order_by='Contributor.position',
                                 collection_class=ordering_list('position'))
+    affiliations = relationship('Affiliation', back_populates='work')
+
+    def to_dict(self):
+        start_date = end_date = None
+        if self.during:
+            start_date, end_date = parse_duration(self.during)
+
+        result = {'id': self.id,
+                  'type': self.type,
+                  'title': self.title,
+                  'issued': self.issued,
+                  'start_date': start_date,
+                  'end_date': end_date}
+        return result
+
+        result = {}
+        for prop in instance_dict(self):
+            if prop.startswith('_'):
+                continue
+            result[prop] = getattr(self, prop)
+
+        return result
+
+    def update_dict(self, data):
+        start_date = data.pop('start_date', None)
+        end_date = data.pop('end_date', None)
+        issued = data['issued']
+        set_attribute(self, 'during', DateInterval([start_date, end_date]))
+        if start_date is None and end_date is None:
+            set_attribute(self, 'during', DateInterval([issued, issued]))
+
+
+        for key, value in data.items():
+            if key.startswith('_'):
+                continue
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        work = Work()
+        work.update_dict(data)
+        return work
 
 
 class Person(Base):
@@ -98,6 +119,9 @@ class Person(Base):
     accounts = relationship('PersonAccount',
                             back_populates='person',
                             cascade='all, delete-orphan')
+    contributors = relationship('Contributor',
+                                back_populates='person',
+                                cascade='all, delete-orphan')
 
     def to_dict(self):
         result = {}
@@ -238,6 +262,7 @@ class Group(Base):
 
     members = relationship('Membership', back_populates='group')
     owners = relationship('Owner', back_populates='group')
+    affiliations = relationship('Affiliation', back_populates='group')
     accounts = relationship('GroupAccount',
                             back_populates='group',
                             cascade='all, delete-orphan')
@@ -430,28 +455,132 @@ class Membership(Base):
         return membership
 
 
-
 class Contributor(Base):
     "An Actor that made a specific contribution to a work"
     __tablename__ = 'contributors'
     __table_args__ = (
-        ForeignKeyConstraint(['role', 'kind'],
-                             ['contributor_role_schemes.key',
-                              'contributor_role_schemes.kind']),
+        CheckConstraint('NOT(person_id IS NULL AND group_id IS NULL)'),
         )
     id = Column(Integer, Sequence('contributors_id_seq'), primary_key=True)
-    kind = Column(Unicode(32),
-                  ForeignKey('kind_schemes.key'),
-                  nullable=False)
     role = Column(Unicode(32),
+                  ForeignKey('contributor_role_schemes.key'),
+                  index=True,
                   nullable=False)
     during = Column(DateRangeType, nullable=True)
     work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
-    work = relationship('Work', back_populates='contributors')
+    work = relationship('Work', back_populates='contributors', lazy='joined')
 
-    person_id = Column(Integer, ForeignKey('persons.id'), index=True, nullable=False)
-    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=False)
+    person_id = Column(Integer, ForeignKey('persons.id'), index=True, nullable=True)
+    person = relationship('Person', lazy='joined')
+
+    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=True)
+    group = relationship('Group', lazy='joined')
+
     position = Column(Integer)
+
+    affiliations = relationship('Affiliation', back_populates='contributor')
+
+
+    def to_dict(self):
+        start_date = end_date = None
+        if self.during:
+            start_date, end_date = parse_duration(self.during)
+
+        if self.person is None:
+            person_name = None
+        else:
+            person_name = self.person.name
+        if self.group is None:
+            group_name = None
+        else:
+            group_name = self.group.name
+
+        result = {'id': self.id,
+                  'role': self.role,
+                  'work_id': self.work_id,
+                  '_work_name': self.work.title,
+                  'person_id': self.person_id,
+                  '_person_name': person_name,
+                  'group_id': self.group_id,
+                  '_group_name': group_name,
+                  'start_date': start_date,
+                  'end_date': end_date,
+                  'position': self.position}
+        return result
+
+    def update_dict(self, data):
+
+        start_date = data.pop('start_date', None)
+        end_date = data.pop('end_date', None)
+        set_attribute(self, 'during', DateInterval([start_date, end_date]))
+        for key, value in data.items():
+            if key.startswith('_'):
+               continue
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        contributor = Contributor()
+        contributor.update_dict(data)
+        return contributor
+
+class Affiliation(Base):
+    __tablename__ = 'affiliations'
+
+    id = Column(Integer, Sequence('affiliations_id_seq'), primary_key=True)
+
+    work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
+    work = relationship('Work', back_populates='affiliations', lazy='joined')
+
+    contributor_id = Column(Integer,
+                            ForeignKey('contributors.id'),
+                            index=True, nullable=True)
+    contributor = relationship('Contributor',
+                               back_populates='affiliations',
+                               lazy='joined')
+
+    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=True)
+    group = relationship('Group', back_populates='affiliations', lazy='joined')
+
+    position = Column(Integer)
+
+    def to_dict(self):
+
+        if self.person is None:
+            person_name = None
+        else:
+            person_name = self.person.name
+
+        if self.group is None:
+            group_name = None
+        else:
+            group_name = self.group.name
+
+        result = {'id': self.id,
+                  'role': self.role,
+                  'work_id': self.work_id,
+                  '_work_name': self.work.title,
+                  'person_id': self.person_id,
+                  '_person_name': person_name,
+                  'group_id': self.group_id,
+                  '_group_name': group_name,
+                  'position': self.position}
+        return result
+
+    def update_dict(self, data):
+
+        for key, value in data.items():
+            if key.startswith('_'):
+               continue
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        affiliation = Affiliation()
+        affiliation.update_dict(data)
+        return affiliation
+
+
 
 class Repository(Base):
     __tablename__ = 'repositories'

@@ -9,6 +9,8 @@ from caleido.models import (Base,
                             Repository,
                             User, UserGroup,
                             GroupType,
+                            WorkType,
+                            ContributorRole,
                             PersonAccountType,
                             GroupAccountType)
 
@@ -19,6 +21,8 @@ DEFAULTS = {
                     40: 'Owner',
                     10: 'Viewer'},
     'group_types': {'organisation': 'Organisation'},
+    'contributor_roles': {'author': 'Author'},
+    'work_types': {'article': 'Article'},
     'person_account_types': {'email': 'email',
                              'local': 'Local',
                              'wikipedia': 'Wikipedia'},
@@ -93,6 +97,12 @@ class Storage(object):
         group_account_types = DEFAULTS['group_account_types']
         for key, label in group_account_types.items():
             session.add(GroupAccountType(key=key, label=label))
+        work_types = DEFAULTS['work_types']
+        for key, label in work_types.items():
+            session.add(WorkType(key=key, label=label))
+        contributor_roles = DEFAULTS['contributor_roles']
+        for key, label in contributor_roles.items():
+            session.add(ContributorRole(key=key, label=label))
         session.flush()
         session.execute('SET search_path TO public');
         session.flush()
@@ -129,6 +139,8 @@ REPOSITORY_CONFIG = {}
 
 class RepositoryConfig(object):
     orm_table = {'group_type': GroupType,
+                 'work_type': WorkType,
+                 'contributor_role': ContributorRole,
                  'person_account_type': PersonAccountType,
                  'group_account_type': GroupAccountType}
 

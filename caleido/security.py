@@ -1,13 +1,15 @@
 from caleido.models import User
+from caleido.resources import GroupResource
 
 def add_role_principals(userid, request):
     return request.jwt_claims.get('principals') or []
 
 def authenticator_factory(request):
-    return BasicAuthenticator(request.dbsession)
+    return BasicAuthenticator(request.registry, request.dbsession)
 
 class BasicAuthenticator(object):
-    def __init__(self, session):
+    def __init__(self, registry, session):
+        self.registry = registry
         self.session = session
 
     def existing_user(self, userid):
@@ -30,9 +32,16 @@ class BasicAuthenticator(object):
                        60: 'group:editor',
                        40: 'group:owner',
                        10: 'group:viewer'}[user.user_group]]
+        owner_group_ids = []
         for owner in user.owns:
             if owner.person_id:
                 principals.append('owner:person:%s' % owner.person_id)
             elif owner.group_id:
-                principals.append('owner:group:%s' % owner.group_id)
+                owner_group_ids.append(owner.group_id)
+                owner_group_ids.extend(
+                    GroupResource(self.registry,
+                                  self.session,
+                                  key=owner.group_id).child_groups())
+        for group_id in set(owner_group_ids):
+            principals.append('owner:group:%s' % group_id)
         return principals

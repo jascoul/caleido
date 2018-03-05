@@ -7,7 +7,7 @@ from cornice.resource import resource, view
 from cornice.validators import colander_validator
 from cornice import Service
 
-from caleido.models import Person, Membership, Group
+from caleido.models import Person, Membership, Group, Contributor
 from caleido.resources import ResourceFactory, PersonResource
 
 from caleido.exceptions import StorageError
@@ -40,12 +40,11 @@ class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                 missing=colander.drop)
     family_name = colander.SchemaNode(colander.String())
     family_name_prefix = colander.SchemaNode(colander.String(),
-                                             missing=colander.drop)
-    given_name = colander.SchemaNode(colander.String(), missing=colander.drop)
-    initials = colander.SchemaNode(colander.String(), missing=colander.drop)
-    alternative_name = colander.SchemaNode(colander.String(),
-                                           missing=colander.drop)
-    honorary = colander.SchemaNode(colander.String(), missing=colander.drop)
+                                             missing=None)
+    given_name = colander.SchemaNode(colander.String(), missing=None)
+    initials = colander.SchemaNode(colander.String(), missing=None)
+    alternative_name = colander.SchemaNode(colander.String(), missing=None)
+    honorary = colander.SchemaNode(colander.String(), missing=None)
 
 
     @colander.instantiate(missing=colander.drop)
@@ -94,7 +93,15 @@ class PersonListingResponseSchema(colander.MappingSchema):
                 id = colander.SchemaNode(colander.Int())
                 name = colander.SchemaNode(colander.String())
                 memberships = colander.SchemaNode(colander.Int())
-                groups = colander.SchemaNode(colander.String())
+                works = colander.SchemaNode(colander.Int())
+
+                @colander.instantiate()
+                class groups(colander.SequenceSchema):
+                    @colander.instantiate()
+                    class group(colander.MappingSchema):
+                        id = colander.SchemaNode(colander.Int())
+                        name = colander.SchemaNode(colander.String())
+
 
 class PersonListingRequestSchema(colander.MappingSchema):
     @colander.instantiate()
@@ -234,24 +241,27 @@ class PersonRecordAPI(object):
         query = self.request.validated['querystring'].get('query')
         filters = []
         if query:
-            filters.append(Person.family_name.like(query + '%'))
+            filters.append(Person.family_name.ilike('%%%s%%' % query))
         from_query=None
         query_callback = None
         if format == 'snippet':
             from_query = self.context.session.query(Person)
             from_query = from_query.options(
-                Load(Person).load_only('id', 'name'))
+                Load(Person).load_only('id', 'name')).group_by(Person.id,
+                                                               Person.name)
 
             def query_callback(from_query):
                 filtered_persons = from_query.cte('filtered_persons')
                 with_memberships = self.context.session.query(
                     filtered_persons,
-                    func.count(Membership.id).label('membership_count'),
-                    func.array_agg(Group.name.distinct()).label('groups')
-                    ).outerjoin(Membership).outerjoin(Group).group_by(
-                    filtered_persons.c.id,
-                    filtered_persons.c.name)
-                return with_memberships
+                    func.count(Membership.id.distinct()).label('membership_count'),
+                    func.array_agg(Group.id.distinct()).label('group_ids'),
+                    func.array_agg(Group.name.distinct()).label('group_names'),
+                    func.count(Contributor.work_id.distinct()).label('work_count')
+                    ).outerjoin(Contributor).outerjoin(Membership).outerjoin(
+                    Group).group_by(filtered_persons.c.id,
+                                    filtered_persons.c.name)
+                return with_memberships.order_by(filtered_persons.c.name)
 
         listing = self.context.search(
             filters=filters,
@@ -273,10 +283,13 @@ class PersonRecordAPI(object):
         if format == 'snippet':
             snippets = []
             for hit in listing['hits']:
+                groups = [{'id': i[0], 'name': i[1]} for i in
+                           zip(hit.group_ids, hit.group_names)]
                 snippets.append(
                     {'id': hit.id,
                      'name': hit.name,
-                     'groups': ', '.join(sorted([g for g in hit.groups if g])),
+                     'groups': groups,
+                     'works': hit.work_count,
                      'memberships': hit.membership_count})
             result['snippets'] = snippets
         else:
@@ -338,7 +351,7 @@ def person_search_view(request):
     query = request.validated['querystring'].get('query')
     filters = []
     if query:
-        filters.append(Person.name.like(query + '%'))
+        filters.append(Person.family_name.ilike('%%%s%%' % query))
     from_query = request.context.session.query(Person)
     from_query = from_query.options(
         Load(Person).load_only('id', 'name'))
@@ -352,6 +365,7 @@ def person_search_view(request):
                                              filtered_persons.c.name)
         return with_memberships
 
+    # allow search listing with editor principals
     listing = request.context.search(
         filters=filters,
         offset=offset,
@@ -360,7 +374,7 @@ def person_search_view(request):
         format=format,
         from_query=from_query,
         post_query_callback=query_callback,
-        principals=request.effective_principals)
+        principals=['group:editor'])
     snippets = []
     for hit in listing['hits']:
         snippets.append({'id': hit.id,

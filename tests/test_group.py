@@ -318,10 +318,7 @@ class GroupRetrievalWebTest(GroupWebTest):
         assert len(out.json.get('snippets', [])) == 1
         assert out.json['snippets'][0]['members'] == 1
 
-    def broken_test_owner_group_search(self):
-        # XXX needs to be fixed! this is not possible anymore because of acl_filters
-        # returning non matching where clauses.
-        # Maybe have an __acl__ list on a schema class for these cases?
+    def test_owner_group_search(self):
         headers = dict(Authorization='Bearer %s' % self.generate_test_token('owner'))
         # all users have search permission on all groups
         out = self.api.get(

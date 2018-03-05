@@ -12,7 +12,7 @@ import transaction
 
 from caleido.models import (
     User, Person, Group, GroupType, GroupAccountType, PersonAccountType,
-    Membership)
+    Membership, Work, WorkType, Contributor, ContributorRole, Affiliation)
 from caleido.exceptions import StorageError
 
 class ResourceFactory(object):
@@ -141,6 +141,7 @@ class BaseResource(object):
                order_by=None,
                format=None,
                from_query=None,
+               from_query_joined_tables=None,
                post_query_callback=None,
                apply_limits_post_query=False,
                keys_only=False):
@@ -153,13 +154,16 @@ class BaseResource(object):
         if filters:
             query = query.filter(sql.and_(*filters))
         acl_filters = []
-        acl_joined_tables = []
+        acl_joined_tables = [t.__table__.name for t in (from_query_joined_tables or []) ]
         for filter in self.acl_filters(principals):
-            if (filter.left.table.name != self.orm_class.__table__.name and
-                filter.left.table.name not in acl_joined_tables):
+            first_clause = filter
+            if not hasattr(first_clause, 'left'):
+                first_clause = filter.clauses[0]
+            if (first_clause.left.table.name != self.orm_class.__table__.name and
+                first_clause.left.table.name not in acl_joined_tables):
                 # acl requires filter on other table
-                query = query.join(filter.left.table)
-                acl_joined_tables.append(filter.left.table.name)
+                query = query.join(first_clause.left.table)
+                acl_joined_tables.append(first_clause.left.table.name)
             acl_filters.append(filter)
         if acl_filters:
             query = query.filter(sql.or_(*acl_filters))
@@ -183,7 +187,6 @@ class BaseResource(object):
             query = query.options(load_only(self.key_col_name))
         return {'total': total,
                 'hits': [h for h in query.all()]}
-
 
     def is_permitted(self, model, principals, permission):
         policy = self.registry.queryUtility(IAuthorizationPolicy)
@@ -257,6 +260,7 @@ class PersonResource(BaseResource):
 
     def acl_filters(self, principals):
         filters = []
+        owner_group_ids = []
         for principal in principals:
             if principal in {'group:admin',
                              'group:manager',
@@ -265,8 +269,11 @@ class PersonResource(BaseResource):
             if principal.startswith('owner:person:'):
                 filters.append(Person.id == principal.split(':')[-1])
             if principal.startswith('owner:group:'):
-                filters.append(Membership.group_id == principal.split(':')[-1])
+                owner_group_ids.append(int(principal.split(':')[-1]))
 
+        if owner_group_ids:
+            filters.append(sql.or_(*[Membership.group_id == i
+                                     for i in set(owner_group_ids)]))
         if not filters:
             # match nothing
             filters.append(Person.id == -1)
@@ -298,13 +305,19 @@ class GroupResource(BaseResource):
 
     def acl_filters(self, principals):
         filters = []
+        owner_group_ids = []
         for principal in principals:
             if principal in {'group:admin',
                              'group:manager',
                              'group:editor'}:
                 return []
             if principal.startswith('owner:group:'):
-                filters.append(Group.id == int(principal.split(':')[-1]))
+                owner_group_ids.append(int(principal.split(':')[-1]))
+
+        if owner_group_ids:
+            filters.append(sql.or_(*[Group.id == i
+                                     for i in set(owner_group_ids)]))
+
         if not filters:
             # match nothing
             filters.append(Group.id == -1)
@@ -334,6 +347,47 @@ class GroupResource(BaseResource):
         return self.session.execute(
             query, dict(group_id=self.model.id)).scalar() or []
 
+
+class WorkResource(BaseResource):
+    orm_class = Work
+    key_col_name = 'id'
+
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'system.Authenticated', 'search')
+        yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
+        if self.model:
+            # owners can view and edit groups
+            yield (Allow, 'owner:group:%s' % self.model.id, ['view', 'edit'])
+        elif self.model is None:
+            # no model loaded yet, allow container view
+            yield (Allow, 'system.Authenticated', 'view')
+
+    def acl_filters(self, principals):
+        filters = []
+        owner_group_ids = []
+        for principal in principals:
+            if principal in {'group:admin',
+                             'group:manager',
+                             'group:editor'}:
+                return []
+            if principal.startswith('owner:person:'):
+                filters.append(
+                    Contributor.person_id == principal.split(':')[-1])
+            elif principal.startswith('owner:group:'):
+                owner_group_ids.append(int(principal.split(':')[-1]))
+
+        if owner_group_ids:
+            filters.append(sql.or_(*[Affiliation.group_id == i
+                                     for i in set(owner_group_ids)]))
+        if not filters:
+            # match nothing
+            filters.append(Contributor.id == -1)
+        return filters
+
+
 class MembershipResource(BaseResource):
     orm_class = Membership
     key_col_name = 'id'
@@ -344,10 +398,10 @@ class MembershipResource(BaseResource):
         yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:
-            # group owners can view and edit members
-            yield (Allow, 'owner:group:%s' % self.model.group_id, ['view', 'edit', 'delete'])
-            # person owners can view and edit memberships
-            yield (Allow, 'owner:person:%s' % self.model.person_id, ['view', 'edit', 'delete'])
+            # group owners can view, add, and edit members
+            yield (Allow, 'owner:group:%s' % self.model.group_id, ['view', 'add', 'edit', 'delete'])
+            # person owners can only view memberships
+            yield (Allow, 'owner:person:%s' % self.model.person_id, ['view'])
         elif self.model is None:
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
@@ -367,8 +421,79 @@ class MembershipResource(BaseResource):
         return filters
 
 
+class ContributorResource(BaseResource):
+    orm_class = Contributor
+    key_col_name = 'id'
+
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
+        if self.model:
+            # group owners can view, add, and edit members
+            yield (Allow,
+                   'owner:group:%s' % self.model.group_id,
+                   ['view', 'add', 'edit', 'delete'])
+            # person owners can view, add, and edit works
+            yield (Allow,
+                   'owner:person:%s' % self.model.person_id,
+                   ['view', 'add', 'edit', 'delete'])
+        elif self.model is None:
+            # no model loaded yet, allow container view
+            yield (Allow, 'system.Authenticated', 'view')
+
+    def acl_filters(self, principals):
+        filters = []
+        for principal in principals:
+            if principal in {'group:admin',
+                             'group:manager',
+                             'group:editor'}:
+                return []
+            if principal.startswith('owner:group:'):
+                filters.append(Contributor.group_id == principal.split(':')[-1])
+            elif principal.startswith('owner:person:'):
+                filters.append(
+                    Contributor.person_id == principal.split(':')[-1])
+        return filters
+
+
+class AffiliationResource(BaseResource):
+    orm_class = Affiliation
+    key_col_name = 'id'
+
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'group:manager', ['view', 'add', 'edit', 'delete'])
+        yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
+        if self.model:
+            # group owners can view, add, and edit members
+            yield (Allow,
+                   'owner:group:%s' % self.model.group_id,
+                   ['view', 'add', 'edit', 'delete'])
+            # person owners can view, add, and edit works
+            yield (Allow,
+                   'owner:person:%s' % self.model.person_id,
+                   ['view', 'add', 'edit', 'delete'])
+        elif self.model is None:
+            # no model loaded yet, allow container view
+            yield (Allow, 'system.Authenticated', 'view')
+
+    def acl_filters(self, principals):
+        filters = []
+        for principal in principals:
+            if principal in {'group:admin',
+                             'group:manager',
+                             'group:editor'}:
+                return []
+        return filters
+
+
 class TypeResource(object):
     schemes = {'group': GroupType,
+               'work': WorkType,
+               'contributorRole': ContributorRole,
                'groupAccount': GroupAccountType,
                'personAccount': PersonAccountType}
     orm = None
