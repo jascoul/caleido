@@ -377,8 +377,16 @@ def person_search_view(request):
         principals=['group:editor'])
     snippets = []
     for hit in listing['hits']:
+        if hit.membership_count == 0:
+            info = ''
+        elif hit.membership_count == 1:
+            info = '1 membership'
+        else:
+            info = '%s memberships' % hit.membership_count
+
         snippets.append({'id': hit.id,
                          'name': hit.name,
+                         'info': info,
                          'members': hit.membership_count})
     return {'total': listing['total'],
             'snippets': snippets,

@@ -1,4 +1,5 @@
 from intervals import DateInterval
+import datetime
 
 import colander
 import sqlalchemy as sql
@@ -25,6 +26,36 @@ def deferred_work_type_validator(node, kw):
     types = kw['repository'].type_config('work_type')
     return colander.OneOf([t['key'] for t in types])
 
+@colander.deferred
+def deferred_identifier_type_validator(node, kw):
+    types = kw['repository'].type_config('identifier_type')
+    return colander.OneOf([t['key'] for t in types])
+
+@colander.deferred
+def deferred_contributor_role_validator(node, kw):
+    types = kw['repository'].type_config('contributor_role')
+    return colander.OneOf([t['key'] for t in types])
+
+@colander.deferred
+def deferred_relation_type_validator(node, kw):
+    types = kw['repository'].type_config('relation_type')
+    return colander.OneOf([t['key'] for t in types])
+
+@colander.deferred
+def deferred_description_type_validator(node, kw):
+    types = kw['repository'].type_config('description_type')
+    return colander.OneOf([t['key'] for t in types])
+
+@colander.deferred
+def deferred_description_format_validator(node, kw):
+    types = kw['repository'].type_config('description_format')
+    return colander.OneOf([t['key'] for t in types])
+
+@colander.deferred
+def deferred_measure_type_validator(node, kw):
+    types = kw['repository'].type_config('measure_type')
+    return colander.OneOf([t['key'] for t in types])
+
 class WorkSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     id = colander.SchemaNode(colander.Int())
     type = colander.SchemaNode(colander.String(),
@@ -33,6 +64,102 @@ class WorkSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     issued = colander.SchemaNode(colander.Date())
     start_date = colander.SchemaNode(colander.Date(), missing=None)
     end_date = colander.SchemaNode(colander.Date(), missing=None)
+
+    @colander.instantiate(missing=colander.drop)
+    class identifiers(colander.SequenceSchema):
+        @colander.instantiate()
+        class identifier(colander.MappingSchema):
+            type = colander.SchemaNode(
+                colander.String(),
+                validator=deferred_identifier_type_validator)
+            value = colander.SchemaNode(colander.String())
+
+    @colander.instantiate(missing=colander.drop)
+    class measures(colander.SequenceSchema):
+        @colander.instantiate()
+        class measure(colander.MappingSchema):
+            type = colander.SchemaNode(
+                colander.String(),
+                validator=deferred_measure_type_validator)
+            value = colander.SchemaNode(colander.String())
+
+    @colander.instantiate(missing=colander.drop)
+    class descriptions(colander.SequenceSchema):
+        @colander.instantiate()
+        class description(colander.MappingSchema):
+            type = colander.SchemaNode(
+                colander.String(),
+                validator=deferred_description_type_validator)
+            format = colander.SchemaNode(
+                colander.String(),
+                missing='text',
+                validator=deferred_description_format_validator)
+            value = colander.SchemaNode(colander.String(), missing=None)
+            position = colander.SchemaNode(colander.Integer(),
+                                           missing=colander.drop)
+            id = colander.SchemaNode(colander.Integer(), missing=colander.drop)
+            target_id = colander.SchemaNode(colander.Integer(), missing=None)
+            _target_name = colander.SchemaNode(colander.String(),
+                                               missing=colander.drop)
+
+
+
+    @colander.instantiate(missing=colander.drop)
+    class relations(colander.SequenceSchema):
+        @colander.instantiate()
+        class relation(colander.MappingSchema):
+            type = colander.SchemaNode(
+                colander.String(),
+                validator=deferred_relation_type_validator)
+            position = colander.SchemaNode(colander.Integer(),
+                                           missing=colander.drop)
+            id = colander.SchemaNode(colander.Integer(), missing=colander.drop)
+            target_id = colander.SchemaNode(colander.Integer())
+            _target_name = colander.SchemaNode(colander.String(),
+                                               missing=colander.drop)
+            _target_type = colander.SchemaNode(colander.String(),
+                                               missing=colander.drop)
+            start_date = colander.SchemaNode(colander.Date(), missing=None)
+            end_date = colander.SchemaNode(colander.Date(), missing=None)
+            starting = colander.SchemaNode(colander.String(), missing=None)
+            ending = colander.SchemaNode(colander.String(), missing=None)
+            total = colander.SchemaNode(colander.String(), missing=None)
+            volume = colander.SchemaNode(colander.String(), missing=None)
+            issue = colander.SchemaNode(colander.String(), missing=None)
+            location = colander.SchemaNode(colander.String(), missing=None)
+            number = colander.SchemaNode(colander.String(), missing=None)
+
+
+    @colander.instantiate(missing=colander.drop)
+    class contributors(colander.SequenceSchema):
+        @colander.instantiate()
+        class contributor(colander.MappingSchema):
+            role = colander.SchemaNode(
+                colander.String(),
+                validator=deferred_contributor_role_validator)
+            position = colander.SchemaNode(colander.Integer(),
+                                           missing=colander.drop)
+            id = colander.SchemaNode(colander.Integer(), missing=colander.drop)
+            person_id = colander.SchemaNode(colander.Integer())
+            _person_name = colander.SchemaNode(colander.String(),
+                                               missing=colander.drop)
+            start_date = colander.SchemaNode(colander.Date(), missing=None)
+            end_date = colander.SchemaNode(colander.Date(), missing=None)
+            location = colander.SchemaNode(colander.String(), missing=None)
+
+            @colander.instantiate(missing=colander.drop)
+            class affiliations(colander.SequenceSchema):
+                @colander.instantiate()
+                class affiliation(colander.MappingSchema):
+                    id = colander.SchemaNode(colander.Int(),
+                                             missing=colander.drop)
+                    group_id = colander.SchemaNode(colander.Int())
+                    _group_name = colander.SchemaNode(colander.String(),
+                                              missing=colander.drop)
+                    position = colander.SchemaNode(colander.Int(),
+                                                   missing=colander.drop)
+
+
 
 class WorkPostSchema(WorkSchema):
     # similar to group schema, but id is optional
@@ -91,6 +218,8 @@ class WorkListingRequestSchema(colander.MappingSchema):
                                                    missing=colander.drop)
         affiliation_group_id = colander.SchemaNode(colander.Integer(),
                                                    missing=colander.drop)
+        related_work_id = colander.SchemaNode(colander.Integer(),
+                                              missing=colander.drop)
         offset = colander.SchemaNode(colander.Int(),
                                    default=0,
                                    validator=colander.Range(min=0),
@@ -101,7 +230,7 @@ class WorkListingRequestSchema(colander.MappingSchema):
                                     missing=20)
         format = colander.SchemaNode(
             colander.String(),
-            validator=colander.OneOf(['record', 'snippet']),
+            validator=colander.OneOf(['snippet', 'csl']),
             missing=colander.drop)
 
 class WorkSearchRequestSchema(colander.MappingSchema):
@@ -109,6 +238,8 @@ class WorkSearchRequestSchema(colander.MappingSchema):
     class querystring(colander.MappingSchema):
         query = colander.SchemaNode(colander.String(),
                                     missing=colander.drop)
+        type = colander.SchemaNode(colander.String(),
+                                   missing=colander.drop)
         offset = colander.SchemaNode(colander.Int(),
                                    default=0,
                                    validator=colander.Range(min=0),
@@ -224,9 +355,6 @@ class WorkRecordAPI(object):
             duration = DateInterval([qs.get('start_date'),
                                      qs.get('end_date')])
             filters.append(Work.during.op('&&')(duration))
-        format = self.request.validated['querystring'].get('format')
-        if format == 'record':
-            format = None
         if query:
             filters.append(Work.title.ilike('%%%s%%' % query))
         filter_type = self.request.validated['querystring'].get('filter_type')
@@ -235,57 +363,6 @@ class WorkRecordAPI(object):
             filters.append(sql.or_(*[Work.type == f for f in filter_types]))
 
         from_query=None
-        from_query_joined_tables=[]
-        query_callback = None
-        if format == 'snippet':
-            from_query = self.context.session.query(Work)
-            from_query = from_query.options(
-                Load(Work).load_only('id',
-                                      'type',
-                                     'issued',
-                                      'title'))
-            if qs.get('contributor_person_id'):
-                from_query = from_query.join(Contributor)
-                filters.append(
-                    Contributor.person_id == qs['contributor_person_id'])
-                from_query_joined_tables.append(Contributor)
-            if qs.get('contributor_group_id'):
-                from_query = from_query.join(Contributor)
-                filters.append(
-                    Contributor.group_id == qs['contributor_group_id'])
-                from_query_joined_tables.append(Contributor)
-            if qs.get('affiliation_group_id'):
-                from_query = from_query.join(Affiliation)
-                group_id = qs['affiliation_group_id']
-                group_ids = [group_id]
-                group_ids.extend(ResourceFactory(GroupResource)(
-                    self.request, group_id).child_groups())
-                filters.append(
-                    sql.or_(*[Affiliation.group_id == g for g in group_ids]))
-                from_query_joined_tables.append(Affiliation)
-
-
-            def query_callback(from_query):
-                filtered_works = from_query.cte('filtered_works')
-                with_contributors = self.context.session.query(
-                    filtered_works.c.id.label('id'),
-                    filtered_works.c.title.label('title'),
-                    filtered_works.c.issued.label('issued'),
-                    filtered_works.c.type.label('type'),
-                    func.array_agg(sql.distinct(func.concat(Person.id,
-                                                            ':',
-                                                            Person.name))
-                                   ).label('contributors'),
-                    ).join(Contributor).join(Person).group_by(filtered_works)
-                filtered_contributors = with_contributors.cte('contributors')
-                with_aff_groups = self.context.session.query(
-                    filtered_contributors,
-                    func.array_agg(sql.distinct(func.concat(Group.id,
-                                                            ':',
-                                                            Group.name))
-                                   ).label('affiliations'),
-                    ).outerjoin(Affiliation).join(Group).group_by(filtered_contributors)
-                return with_aff_groups
         listing = self.context.search(
             filters=filters,
             offset=offset,
@@ -293,39 +370,15 @@ class WorkRecordAPI(object):
             order_by=order_by,
             format=format,
             from_query=from_query,
-            from_query_joined_tables=from_query_joined_tables,
-            post_query_callback=query_callback,
             principals=self.request.effective_principals)
         schema = WorkSchema()
         result = {'total': listing['total'],
-                  'records': [],
+                  'records': [schema.to_json(work.to_dict())
+                              for work in listing['hits']],
                   'snippets': [],
                   'limit': limit,
                   'offset': offset,
                   'status': 'ok'}
-
-        if format == 'snippet':
-            snippets = []
-            for hit in listing['hits']:
-                contributors = []
-                for contributor in hit.contributors:
-                    id, name = contributor.split(':', 1)
-                    contributors.append(dict(id=id, name=name))
-                affiliations = []
-                for affiliation in hit.affiliations:
-                    id, name = affiliation.split(':', 1)
-                    affiliations.append(dict(id=id, name=name))
-                snippets.append({'id': hit.id,
-                                 'title': hit.title,
-                                 'type': hit.type,
-                                 'issued': hit.issued.strftime('%Y-%m-%d'),
-                                 'affiliations': affiliations,
-                                 'contributors': contributors})
-            result['snippets'] = snippets
-        else:
-            result['records'] = [schema.to_json(work.to_dict())
-                                 for work in listing['hits']]
-
         return result
 
 work_bulk = Service(name='WorkBulk',
@@ -358,6 +411,103 @@ def work_bulk_import_view(request):
     request.response.status = 201
     return {'status': 'ok'}
 
+work_listing = Service(name='WorkListing',
+                     path='/api/v1/work/listing',
+                     factory=ResourceFactory(WorkResource),
+                     api_security=[{'jwt':[]}],
+                     tags=['work'],
+                     cors_origins=('*', ),
+                     schema=WorkListingRequestSchema(),
+                     validators=(colander_validator,),
+                     response_schemas={
+    '200': OKStatusResponseSchema(description='Ok'),
+    '400': ErrorResponseSchema(description='Bad Request'),
+    '401': ErrorResponseSchema(description='Unauthorized')})
+
+@work_listing.get(permission='view')
+def work_listing_view(request):
+    qs = request.validated['querystring']
+    params = dict(offset = qs['offset'],
+                  limit = qs['limit'],
+                  text_query = qs.get('query'),
+                  order_by = qs.get('order_by'),
+                  start_date = qs.get('start_date'),
+                  end_date = qs.get('end_date'),
+                  type = qs.get('filter_type'),
+                  principals=request.effective_principals)
+    if qs.get('contributor_person_id'):
+        params['contributor_person_ids'] = [qs['contributor_person_id']]
+    if qs.get('contributor_group_id'):
+        params['contributor_group_ids'] = [qs['contributor_group_id']]
+    if qs.get('affiliation_group_id'):
+        params['affiliation_group_ids'] = [qs['affiliation_group_id']]
+        params['affiliation_group_ids'].extend(ResourceFactory(GroupResource)(
+            request, qs['affiliation_group_id']).child_groups())
+    if qs.get('related_work_id'):
+        params['related_work_ids'] = [qs['related_work_id']]
+
+    result = request.context.listing(**params)
+
+    def csl_convert(item):
+        issued = datetime.datetime.strptime(item['issued'], '%Y-%m-%d')
+        date_parts = [issued.year]
+        if not (issued.month == 1 and issued.day == 1):
+            date_parts.append(issued.month)
+            if issued.day != 1:
+                date_parts.append(issued.day)
+
+        authors = []
+        editors = []
+        for c in item['contributors']:
+            contributor = {
+                'given': c.get('given_name') or c.get('initials'),
+                'family': c.get('family_name'),
+                'initials': c.get('initials'),
+                'non-dropping-particle': c.get('prefix')}
+            if c['role'] == 'editor':
+                editors.append(contributor)
+            else:
+                authors.append(contributor)
+        type = 'report'
+        if 'chapter' in item['type'].lower():
+            type = 'chapter'
+        elif 'book' in item['type'].lower():
+            type = 'book'
+        elif 'article' in item['type'].lower():
+            type = 'article-journal'
+
+        journal = {}
+        for rel in item.get('relations', []):
+            if rel['relation_type'] == 'isPartOf' and rel['type'] == 'journal':
+                journal['container-title'] = rel['title']
+                if rel['issue']:
+                    journal['issue'] = rel['issue']
+                if rel['volume']:
+                    journal['volume'] = rel['volume']
+                if rel['starting'] and rel['ending']:
+                    journal['page'] = '%s-%s' % (rel['starting'],
+                                                 rel['ending'])
+                break
+
+        result = {'title': item['title'],
+                  'id': str(item['id']),
+                  'type': type,
+                  'issued': {"date-parts": [date_parts]},
+                  'author': authors,
+                  'editor': editors}
+        result.update(journal)
+        return result
+
+    if qs.get('format') == 'csl':
+        result['hits'] = [csl_convert(h) for h in result['hits']]
+    else:
+        for hit in result['hits']:
+            hit['csl'] = csl_convert(hit)
+
+    result['snippets'] = result.pop('hits')
+    result['status'] = 'ok'
+    return result
+
 work_search = Service(name='WorkSearch',
                      path='/api/v1/work/search',
                      factory=ResourceFactory(WorkResource),
@@ -372,14 +522,17 @@ work_search = Service(name='WorkSearch',
     '401': ErrorResponseSchema(description='Unauthorized')})
 
 @work_search.get(permission='search')
-def group_search_view(request):
+def work_search_view(request):
     offset = request.validated['querystring']['offset']
     limit = request.validated['querystring']['limit']
     order_by = [Work.title.asc()]
     query = request.validated['querystring'].get('query')
+    type = request.validated['querystring'].get('type')
     filters = []
     if query:
         filters.append(Work.title.ilike('%%%s%%' % query))
+    if type:
+        filters.append(Work.type == type)
     from_query = request.context.session.query(Work)
     from_query = from_query.options(
         Load(Work).load_only('id', 'title'))
@@ -396,7 +549,8 @@ def group_search_view(request):
     snippets = []
     for hit in listing['hits']:
         snippets.append({'id': hit.id,
-                         'title': hit.title})
+                         'info': hit.type,
+                         'name': hit.title})
     return {'total': listing['total'],
             'snippets': snippets,
             'limit': limit,

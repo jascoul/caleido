@@ -26,8 +26,8 @@ class AffiliationSchema(colander.MappingSchema,
 
     id = colander.SchemaNode(colander.Int())
 
-    contributor_id = colander.SchemaNode(colander.Int(), missing=None)
-    group_id = colander.SchemaNode(colander.Int(), missing=None)
+    contributor_id = colander.SchemaNode(colander.Int())
+    group_id = colander.SchemaNode(colander.Int())
     _group_name = colander.SchemaNode(colander.String(),
                                       missing=colander.drop)
     work_id = colander.SchemaNode(colander.Int())
@@ -163,16 +163,15 @@ class AffiliationRecordAPI(object):
         })
     def collection_post(self):
         "Create a new Affiliation"
-        contributor = Contributor.from_dict(self.request.validated)
+        affiliation = Affiliation.from_dict(self.request.validated)
         try:
-            self.context.put(contributor)
+            self.context.put(affiliation)
         except StorageError as err:
             self.request.errors.status = 400
             self.request.errors.add('body', err.location, str(err))
             return
-
         self.request.response.status = 201
-        return AffiliationSchema().to_json(contributor.to_dict())
+        return AffiliationSchema().to_json(affiliation.to_dict())
 
     @view(permission='view',
           schema=AffiliationListingRequestSchema(),

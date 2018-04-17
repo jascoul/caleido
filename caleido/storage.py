@@ -12,6 +12,11 @@ from caleido.models import (Base,
                             WorkType,
                             ContributorRole,
                             PersonAccountType,
+                            IdentifierType,
+                            MeasureType,
+                            RelationType,
+                            DescriptionType,
+                            DescriptionFormat,
                             GroupAccountType)
 
 DEFAULTS = {
@@ -26,6 +31,27 @@ DEFAULTS = {
     'person_account_types': {'email': 'email',
                              'local': 'Local',
                              'wikipedia': 'Wikipedia'},
+    'relation_types': {'isPartOf': 'is part of',
+                       'references': 'references',
+                       'isFormatOf': 'is format of',
+                       'isVersionOf': 'is version of',
+                       'isReplacedBy': 'is replaced by'},
+    'identifier_types': {'isbn': 'ISBN',
+                         'issn': 'ISSN',
+                         'essn': 'ESSN (ISSN Electronic)',
+                         'doi': 'DOI',
+                         'url': 'URL',
+                         'handle': 'Handle URL',
+                         'scopus': 'Scopus',
+                         'wos': 'Web of Science'},
+    'description_types': {'abstract': 'Abstract',
+                          'keywords': 'Keywords',
+                          'toc': 'Table of Contents'},
+    'description_formats': {'text': 'Plain Text',
+                            'markdown': 'Markdown Text',
+                            'html': 'HTML'},
+    'measure_types': {'cites': 'Citations',
+                      'impactFactor': 'Impact Factor'},
     'group_account_types': {'email': 'email',
                             'local': 'Local',
                             'wikipedia': 'Wikipedia'}
@@ -103,10 +129,25 @@ class Storage(object):
         contributor_roles = DEFAULTS['contributor_roles']
         for key, label in contributor_roles.items():
             session.add(ContributorRole(key=key, label=label))
+        identifier_types = DEFAULTS['identifier_types']
+        for key, label in identifier_types.items():
+            session.add(IdentifierType(key=key, label=label))
+        relation_types = DEFAULTS['relation_types']
+        for key, label in relation_types.items():
+            session.add(RelationType(key=key, label=label))
+        description_types = DEFAULTS['description_types']
+        for key, label in description_types.items():
+            session.add(DescriptionType(key=key, label=label))
+        description_formats = DEFAULTS['description_formats']
+        for key, label in description_formats.items():
+            session.add(DescriptionFormat(key=key, label=label))
+        measure_types = DEFAULTS['measure_types']
+        for key, label in measure_types.items():
+            session.add(MeasureType(key=key, label=label))
+
         session.flush()
         session.execute('SET search_path TO public');
         session.flush()
-
 
 def get_tm_session(session_factory, transaction_manager):
     """
@@ -142,7 +183,12 @@ class RepositoryConfig(object):
                  'work_type': WorkType,
                  'contributor_role': ContributorRole,
                  'person_account_type': PersonAccountType,
-                 'group_account_type': GroupAccountType}
+                 'group_account_type': GroupAccountType,
+                 'identifier_type': IdentifierType,
+                 'relation_type': RelationType,
+                 'description_type': DescriptionType,
+                 'description_format': DescriptionFormat,
+                 'measure_type': MeasureType}
 
     def __init__(self, session, namespace, config_revision=0):
         self.session = session
@@ -155,6 +201,7 @@ class RepositoryConfig(object):
             self.cached_config = {}
             REPOSITORY_CONFIG[self.namespace] = {
                 self.config_revision: self.cached_config}
+
     def type_config(self, type):
         if type in self.cached_config:
             values = self.cached_config[type]
@@ -204,7 +251,7 @@ def includeme(config):
     # use pyramid_retry to retry a request when transient exceptions occur
     config.include('pyramid_retry')
 
-    engine = engine_from_config(settings, prefix='sqlalchemy.')
+    engine = engine_from_config(settings, prefix='sqlalchemy.')#, echo=True)
 
     session_factory = sessionmaker()
     session_factory.configure(bind=engine)

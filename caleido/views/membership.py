@@ -306,6 +306,41 @@ class MembershipRecordAPI(object):
 
         return result
 
+membership_listing = Service(name='MembershipListing',
+                     path='/api/v1/membership/listing',
+                     factory=ResourceFactory(MembershipResource),
+                     api_security=[{'jwt':[]}],
+                     tags=['membership'],
+                     cors_origins=('*', ),
+                     schema=MembershipListingRequestSchema(),
+                     validators=(colander_validator,),
+                     response_schemas={
+    '200': OKStatusResponseSchema(description='Ok'),
+    '400': ErrorResponseSchema(description='Bad Request'),
+    '401': ErrorResponseSchema(description='Unauthorized')})
+
+@membership_listing.get(permission='view')
+def membership_listing_view(request):
+    qs = request.validated['querystring']
+    params = dict(offset = qs['offset'],
+                  limit = qs['limit'],
+                  text_query = qs.get('query'),
+                  order_by = qs.get('order_by'),
+                  start_date = qs.get('start_date'),
+                  end_date = qs.get('end_date'),
+                  principals=request.effective_principals)
+
+    if qs.get('person_id'):
+        params['person_ids'] = [qs['person_id']]
+    if qs.get('group_id'):
+        params['group_ids'] = [qs['group_id']]
+        params['group_ids'].extend(ResourceFactory(GroupResource)(
+            request, qs['group_id']).child_groups())
+
+    result = request.context.listing(**params)
+    result['snippets'] = result.pop('hits')
+    result['status'] = 'ok'
+    return result
 
 
 membership_bulk = Service(name='MembershipBulk',

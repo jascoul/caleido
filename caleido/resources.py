@@ -1,18 +1,22 @@
-import math
+import datetime
+from intervals import DateInterval
+from operator import itemgetter
 
 import sqlalchemy as sql
 from pyramid.httpexceptions import HTTPForbidden
 from pyramid.security import Allow, ALL_PERMISSIONS
 from pyramid.interfaces import IAuthorizationPolicy
 from sqlalchemy_utils.functions import get_primary_keys
-from sqlalchemy.orm import load_only, Load
+from sqlalchemy.orm import load_only, Load, aliased
 from sqlalchemy import func
 import sqlalchemy.exc
 import transaction
 
 from caleido.models import (
     User, Person, Group, GroupType, GroupAccountType, PersonAccountType,
-    Membership, Work, WorkType, Contributor, ContributorRole, Affiliation)
+    Membership, Work, WorkType, Contributor, ContributorRole, Affiliation,
+    IdentifierType, MeasureType, DescriptionType, DescriptionFormat,
+    RelationType, Relation)
 from caleido.exceptions import StorageError
 
 class ResourceFactory(object):
@@ -165,6 +169,7 @@ class BaseResource(object):
                 query = query.join(first_clause.left.table)
                 acl_joined_tables.append(first_clause.left.table.name)
             acl_filters.append(filter)
+
         if acl_filters:
             query = query.filter(sql.or_(*acl_filters))
 
@@ -360,14 +365,19 @@ class WorkResource(BaseResource):
         yield (Allow, 'group:editor', ['view', 'add', 'edit', 'delete'])
         if self.model:
             # owners can view and edit groups
-            yield (Allow, 'owner:group:%s' % self.model.id, ['view', 'edit'])
+            for contributor in self.model.contributors:
+                if contributor.person_id:
+                    yield (Allow, 'owner:person:%s' % contributor.person_id, ['view', 'edit'])
+                elif contributor.group_id:
+                    yield (Allow, 'owner:group:%s' % contributor.group_id, ['view', 'edit'])
+            for affiliation in self.model.affiliations:
+                yield (Allow, 'owner:group:%s' % affiliation.group_id, ['view', 'edit'])
         elif self.model is None:
             # no model loaded yet, allow container view
             yield (Allow, 'system.Authenticated', 'view')
 
     def acl_filters(self, principals):
         filters = []
-        owner_group_ids = []
         for principal in principals:
             if principal in {'group:admin',
                              'group:manager',
@@ -377,15 +387,177 @@ class WorkResource(BaseResource):
                 filters.append(
                     Contributor.person_id == principal.split(':')[-1])
             elif principal.startswith('owner:group:'):
-                owner_group_ids.append(int(principal.split(':')[-1]))
+                filters.append(
+                    Affiliation.group_id == principal.split(':')[-1])
 
-        if owner_group_ids:
-            filters.append(sql.or_(*[Affiliation.group_id == i
-                                     for i in set(owner_group_ids)]))
         if not filters:
             # match nothing
             filters.append(Contributor.id == -1)
         return filters
+
+    def listing(self,
+                text_query=None,
+                type=None,
+                start_date=None,
+                end_date=None,
+                contributor_person_ids=None,
+                contributor_group_ids=None,
+                affiliation_group_ids=None,
+                related_work_ids=None,
+                offset=0,
+                limit=100,
+                order_by=None,
+                principals=None):
+
+        selected_work_ids = None
+        if contributor_person_ids:
+            query = self.session.query(Contributor.work_id.label('id'))
+            query = query.filter(sql.or_(*[Contributor.person_id == pid
+                                           for pid in contributor_person_ids]))
+            query = query.group_by(Contributor.work_id)
+            selected_work_ids = query.cte('selected_work_ids')
+        elif contributor_group_ids:
+            query = self.session.query(Contributor.work_id.label('id'))
+            query = query.filter(sql.or_(*[Contributor.group_id == gid
+                                           for gid in contributor_group_ids]))
+            query = query.group_by(Contributor.work_id)
+            selected_work_ids = query.cte('selected_work_ids')
+        elif affiliation_group_ids:
+            query = self.session.query(Affiliation.work_id.label('id'))
+            query = query.filter(sql.or_(*[Affiliation.group_id == gid
+                                           for gid in affiliation_group_ids]))
+            query = query.group_by(Affiliation.work_id)
+            selected_work_ids = query.cte('selected_work_ids')
+        elif related_work_ids:
+            query = self.session.query(Relation.work_id.label('id'))
+            query = query.filter(sql.or_(*[Relation.target_id == wid
+                                           for wid in related_work_ids]))
+            query = query.group_by(Relation.work_id)
+            selected_work_ids = query.cte('selected_work_ids')
+
+        work_query = self.session.query(Work.id)
+        if selected_work_ids is not None:
+            work_query = work_query.join(
+                selected_work_ids, selected_work_ids.c.id == Work.id)
+
+        acl_filters = self.acl_filters(principals)
+        if acl_filters:
+            group_filters = [f for f in acl_filters if f.left.table.name == 'affiliations']
+            person_filters = [f for f in acl_filters if f.left.table.name == 'contributors']
+            if group_filters:
+                query = self.session.query(Affiliation.work_id.label('id'))
+                query = query.filter(sql.or_(*group_filters))
+                query = query.group_by(Affiliation.work_id)
+                allowed_work_ids = query.cte('allowed_work_ids')
+                allowed_group_query = query
+            if person_filters:
+                query = self.session.query(Contributor.work_id.label('id'))
+                query = query.filter(sql.or_(*person_filters))
+                query = query.group_by(Contributor.work_id)
+                allowed_work_ids = query.cte('allowed_work_ids')
+                allowed_person_query = query
+            if group_filters and person_filters:
+                query = allowed_group_query.union(
+                    allowed_person_query).group_by('id')
+                allowed_work_ids = query.cte('allowed_work_ids')
+
+            work_query = work_query.join(
+                allowed_work_ids, allowed_work_ids.c.id == Work.id)
+
+        if start_date or end_date:
+            duration = DateInterval([start_date, end_date])
+            work_query = work_query.filter(Work.during.op('&&')(duration))
+        if text_query:
+            work_query = work_query.filter(
+                Work.title.ilike('%%%s%%' % text_query))
+        if type:
+            work_query = work_query.filter(Work.type == type)
+
+        total = work_query.count()
+
+        work_query = work_query.order_by(order_by or Work.issued.desc())
+        work_query = work_query.limit(limit).offset(offset)
+
+        filtered_work_ids = work_query.cte('filtered_work_ids')
+
+        listed_works = self.session.query(
+            Work.id.label('id'),
+            Work.type.label('type'),
+            Work.issued.label('issued'),
+            Work.title).join(filtered_work_ids,
+                             filtered_work_ids.c.id == Work.id).cte('listed_works')
+        Target = aliased(Work)
+
+        full_listing = self.session.query(
+            listed_works,
+            func.json_agg(func.json_build_object('id', Contributor.id,
+                                                 'position', Contributor.position,
+                                                 'name', Person.name,
+                                                 'person_id', Person.id,
+                                                 'initials', Person.initials,
+                                                 'prefix', Person.family_name_prefix,
+                                                 'given_name', Person.given_name,
+                                                 'family_name', Person.family_name,
+                                                 'role', Contributor.role)
+                          ).label('contributors'),
+            func.json_agg(func.json_build_object('id', Relation.id,
+                                                 'relation_type', Relation.type,
+                                                 'type', Target.type,
+                                                 'location', Relation.location,
+                                                 'starting', Relation.starting,
+                                                 'ending', Relation.ending,
+                                                 'volume', Relation.volume,
+                                                 'issue', Relation.issue,
+                                                 'number', Relation.number,
+                                                 'title', Target.title,
+                                                 )
+                          ).label('relations'),
+            func.array_agg(
+              sql.distinct(func.concat(Group.id, ':', Group.name))).label('affiliations')
+            )
+
+        full_listing = full_listing.outerjoin(
+            Contributor, listed_works.c.id == Contributor.work_id).join(
+              Person, Person.id == Contributor.person_id)
+        full_listing = full_listing.outerjoin(
+            Affiliation, Contributor.id == Affiliation.contributor_id).outerjoin(
+              Group, Group.id == Affiliation.group_id)
+        full_listing = full_listing.outerjoin(
+            Relation, listed_works.c.id == Relation.work_id).outerjoin(
+              Target, Target.id == Relation.target_id)
+
+        full_listing = full_listing.group_by(listed_works).order_by(
+            listed_works.c.issued.desc())
+
+        hits = []
+        contributor_role_ids = set(contributor_person_ids or [])
+        for hit in full_listing.all():
+            contributors = []
+            roles = set()
+            hit.contributors.sort(key=itemgetter('position'))
+            for contributor in hit.contributors:
+                if contributor['person_id'] in contributor_role_ids:
+                    roles.add(contributor['role'])
+                contributors.append(contributor)
+            affiliations = []
+            for affiliation in hit.affiliations:
+                id, name = affiliation.split(':', 1)
+                affiliations.append(dict(id=id, name=name))
+
+            hits.append({'id': hit.id,
+                         'title': hit.title,
+                         'type': hit.type,
+                         'roles': list(roles),
+                         'issued': hit.issued.strftime('%Y-%m-%d'),
+                         'relations': hit.relations,
+                         'affiliations': affiliations,
+                         'contributors': contributors})
+
+        return {'total': total,
+                'hits': hits,
+                'limit': limit,
+                'offset': offset}
+
 
 
 class MembershipResource(BaseResource):
@@ -420,6 +592,95 @@ class MembershipResource(BaseResource):
                     Membership.person_id == principal.split(':')[-1])
         return filters
 
+
+    def listing(self,
+                text_query=None,
+                start_date=None,
+                end_date=None,
+                person_ids=None,
+                group_ids=None,
+                offset=0,
+                limit=100,
+                order_by=None,
+                principals=None):
+
+        query = self.session.query(
+            Membership.person_id.label('person_id'),
+            Person.name.label('person_name'),
+            Person.family_name.label('person_name_sorted'),
+            func.array_agg(
+              sql.distinct(func.concat(Group.id, ':', Group.name))).label('groups'),
+            func.min(func.coalesce(func.lower(Membership.during),
+                                   datetime.date(1900, 1, 1))).label('earliest'),
+            func.max(func.coalesce(func.upper(Membership.during),
+                                   datetime.date(2100, 1, 1))).label('latest'),
+            func.count(sql.distinct(Membership.id)).label('memberships')
+            ).join(Person).join(Group).group_by(Membership.person_id,
+                                                Person.name,
+                                                Person.family_name)
+
+        if person_ids:
+            query = query.filter(sql.or_(*[Membership.person_id == pid
+                                           for pid in person_ids]))
+        if group_ids:
+            query = query.filter(sql.or_(*[Membership.group_id == pid
+                                           for pid in group_ids]))
+        if start_date or end_date:
+            duration = DateInterval([start_date, end_date])
+            query = query.filter(Membership.during.op('&&')(duration))
+        if text_query:
+            query = query.filter(
+                Person.name.ilike('%%%s%%' % text_query))
+
+        total = query.count()
+
+        query = query.order_by(order_by or Person.family_name)
+        query = query.limit(limit).offset(offset)
+
+        filtered_members = query.cte('members')
+        full_listing = self.session.query(
+            filtered_members,
+            func.count(Contributor.work_id).label('works')
+            )
+        full_listing = full_listing.outerjoin(
+            Contributor,
+            filtered_members.c.person_id == Contributor.person_id)
+        full_listing = full_listing.group_by(
+            filtered_members).order_by(filtered_members.c.person_name_sorted)
+
+        hits = []
+        for hit in full_listing.all():
+            earliest = hit.earliest
+            if earliest:
+                if earliest.year == 1900:
+                    earliest = None
+                else:
+                    earliest = earliest.strftime('%Y-%m-%d')
+
+            latest = hit.latest
+            if latest:
+                if latest.year == 2100:
+                    latest = None
+                else:
+                    latest = latest.strftime('%Y-%m-%d')
+
+            groups = []
+            for group in hit.groups:
+                id, name = group.split(':', 1)
+                groups.append(dict(id=id, name=name))
+
+            hits.append({'person_id': hit.person_id,
+                         'person_name': hit.person_name,
+                         'groups': groups,
+                         'earliest': earliest,
+                         'latest': latest,
+                         'works': hit.works,
+                         'memberships': hit.memberships})
+
+        return {'total': total,
+                'hits': hits,
+                'limit': limit,
+                'offset': offset}
 
 class ContributorResource(BaseResource):
     orm_class = Contributor
@@ -493,9 +754,15 @@ class AffiliationResource(BaseResource):
 class TypeResource(object):
     schemes = {'group': GroupType,
                'work': WorkType,
+               'identifier': IdentifierType,
+               'measure': MeasureType,
+               'relation': RelationType,
+               'description': DescriptionType,
+               'descriptionFormat': DescriptionFormat,
                'contributorRole': ContributorRole,
                'groupAccount': GroupAccountType,
-               'personAccount': PersonAccountType}
+               'personAccount': PersonAccountType
+               }
     orm = None
 
     def __acl__(self):

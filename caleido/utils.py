@@ -31,7 +31,7 @@ class JsonMappingSchemaSerializerMixin(object):
                 node = context.get(key)
                 if node is None:
                     raise ValueError('%s has no field "%s"' % (
-                        context.__class__.__name__, key))
+                        context.__class__, key))
             if isinstance(node.typ, colander.String):
                 value = node.serialize(value)
             elif isinstance(node.typ, colander.Sequence):

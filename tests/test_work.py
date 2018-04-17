@@ -108,13 +108,14 @@ class WorkPermissionWebTest(BaseTest):
                                  headers=headers,
                                  status=201)
         self.another_pub_id = out.json['id']
-        self.api.post_json('/api/v1/contributor/records',
-                           {'person_id': self.john_id,
-                            'work_id': self.pub_id,
-                            'role': 'author',
-                            'position': 0},
-                           headers=headers,
-                           status=201)
+        out = self.api.post_json('/api/v1/contributor/records',
+                                 {'person_id': self.john_id,
+                                  'work_id': self.pub_id,
+                                  'role': 'author',
+                                  'position': 0},
+                                 headers=headers,
+                                 status=201)
+        self.contributor_id = out.json['id']
         self.api.post_json('/api/v1/contributor/records',
                            {'person_id': self.jane_id,
                             'work_id': self.another_pub_id,
@@ -140,12 +141,188 @@ class WorkPermissionWebTest(BaseTest):
 
 
     def test_listing_personal_owner_works(self):
-
         headers = dict(Authorization='Bearer %s' % self.generate_test_token(
             'owner', owners=[{'person_id': self.john_id}]))
         out = self.api.get('/api/v1/work/records',
                            headers=headers)
         assert len(out.json['records']) == 1
 
+
+    def test_retrieve_contributor_affiliations_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        self.api.post_json('/api/v1/affiliation/records',
+                           {'contributor_id': self.contributor_id,
+                            'work_id': self.pub_id,
+                            'group_id':  self.corp_id,
+                            'position': 0},
+                           headers=headers,
+                           status=201)
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        assert len(out.json['contributors']) == 1
+        contributor = out.json['contributors'][0]
+        assert len(contributor['affiliations']) == 1
+
+    def test_add_contributor_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+        assert len(pub['contributors']) == 1
+        pub['contributors'].append({'position': 1,
+                                    'role': 'author',
+                                    'person_id': self.jane_id})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['contributors']) == 2
+        pub['contributors'] = list(reversed(pub['contributors']))
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert pub['contributors'][0]['person_id'] == 2
+        assert pub['contributors'][1]['person_id'] == 1
+
+        del pub['contributors'][0]
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['contributors']) == 1
+
+
+    def test_add_contributor_affiliations_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+        assert len(pub['contributors']) == 1
+        assert len(pub['contributors'][0]['affiliations']) == 0
+
+        pub['contributors'][0]['affiliations'] = [{'group_id': self.corp_id,
+                                                   'position': 0}]
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['contributors'][0]['affiliations']) == 1
+
+    def test_work_with_identifiers_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+        assert len(pub['identifiers']) == 0
+        pub['identifiers'].append({'type': 'doi', 'value': '10.12345/54321'})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['identifiers']) == 1
+        pub['identifiers'][0]['value'] = 'changed'
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['identifiers']) == 1
+        assert pub['identifiers'][0]['value'] == 'changed'
+
+    def test_work_with_subjects_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+        assert len(pub['subjects']) == 0
+        pub['subjects'].append({'type': 'keyword', 'value': 'test'})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['subjects']) == 1
+        pub['subjects'][0]['value'] = 'changed'
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['subjects']) == 1
+        assert pub['subjects'][0]['value'] == 'changed'
+
+    def test_work_with_measures_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+        assert len(pub['measures']) == 0
+        pub['measures'].append({'type': 'cites', 'value': '10'})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['measures']) == 1
+        pub['measures'][0]['value'] = 'changed'
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        assert len(pub['measures']) == 1
+        assert pub['measures'][0]['value'] == 'changed'
+
+
+    def test_add_descriptions_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+        assert len(pub['descriptions']) == 0
+        pub['descriptions'].append({'type': 'abstract',
+                                    'format': 'text',
+                                    'value': 'An abstract'})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['descriptions']) == 1
+        assert pub['descriptions'][0]['value'] == 'An abstract'
+        pub['descriptions'].append({'type': 'abstract',
+                                    'format': 'text',
+                                    'value': 'Another abstract'})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['descriptions']) == 2
+        assert pub['descriptions'][1]['value'] == 'Another abstract'
+        pub['descriptions'] = list(reversed(pub['descriptions']))
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['descriptions']) == 2
+        assert pub['descriptions'][1]['value'] == 'An abstract'
+        assert pub['descriptions'][0]['value'] == 'Another abstract'
+        del pub['descriptions'][0]
+        pub['descriptions'] = list(reversed(pub['descriptions']))
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['descriptions']) == 1
+        assert pub['descriptions'][0]['value'] == 'An abstract'
+
+    def test_add_relations_inline(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
+                           headers=headers)
+        pub = out.json
+
+        assert len(pub['relations']) == 0
+        pub['relations'].append({'type': 'isPartOf',
+                                 'target_id': self.another_pub_id,
+                                 'starting': '1',
+                                 'ending': '2',
+                                 'volume': '3',
+                                 'issue': '4',
+                                 'location': 'here'})
+        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
+                                pub,
+                                headers=headers)
+        pub = out.json
+        assert len(pub['relations']) == 1
+        assert pub['relations'][0]['_target_name'] == 'Another Test Publication'
 
 

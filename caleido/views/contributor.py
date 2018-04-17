@@ -54,7 +54,19 @@ class ContributorSchema(colander.MappingSchema,
                                      missing=colander.drop)
     end_date = colander.SchemaNode(colander.Date(),
                                    missing=colander.drop)
+    location = colander.SchemaNode(colander.String(), missing=None)
     position = colander.SchemaNode(colander.Int())
+
+
+    @colander.instantiate(missing=colander.drop)
+    class affiliations(colander.SequenceSchema):
+        @colander.instantiate()
+        class affiliation(colander.MappingSchema):
+            id = colander.SchemaNode(colander.Int())
+            group_id = colander.SchemaNode(colander.Int())
+            _group_name = colander.SchemaNode(colander.String(),
+                                      missing=colander.drop)
+            position = colander.SchemaNode(colander.Int())
 
 
 class ContributorPostSchema(ContributorSchema):

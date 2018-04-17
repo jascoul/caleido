@@ -42,21 +42,195 @@ class ContributorRole(Base):
     key = Column(Unicode(32), primary_key=True)
     label = Column(Unicode(128))
 
+class RelationType(Base):
+    __tablename__ = 'relation_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class Relation(Base):
+    """
+    isPartOf
+    isFormatOf
+    isReplacedBy
+    isVersionOf
+    """
+
+
+    __tablename__ = 'relations'
+    id = Column(Integer, Sequence('relations_id_seq'), primary_key=True)
+    work_id = Column(Integer,
+                     ForeignKey('works.id'),
+                     index=True)
+    work = relationship('Work',
+                        foreign_keys=[work_id],
+                        back_populates='relations')
+    target_id = Column(Integer,
+                       ForeignKey('works.id'),
+                       index=True,
+                       nullable=False)
+    target = relationship('Work',
+                          foreign_keys=[target_id])
+    type = Column(Unicode(32),
+                  ForeignKey('relation_type_schemes.key'),
+                  index=True,
+                  nullable=False)
+
+    location = Column(Unicode(1024), nullable=True)
+    starting = Column(Unicode(128), nullable=True)
+    ending = Column(Unicode(128), nullable=True)
+    total = Column(Unicode(128), nullable=True)
+    volume = Column(Unicode(128), nullable=True)
+    issue = Column(Unicode(128), nullable=True)
+    number = Column(Unicode(128), nullable=True)
+    during = Column(DateRangeType, nullable=True)
+    position = Column(Integer, nullable=False)
+
+    def to_dict(self):
+        start_date = end_date = None
+        if self.during:
+            start_date, end_date = parse_duration(self.during)
+
+        result = {'id': self.id,
+                  'type': self.type,
+                  'work_id': self.work_id,
+                  '_work_name': self.work.title,
+                  'target_id': self.target_id,
+                  '_target_name': self.target.title,
+                  '_target_type': self.target.type,
+                  'location': self.location,
+                  'starting': self.starting,
+                  'ending': self.ending,
+                  'total': self.total,
+                  'volume': self.volume,
+                  'issue': self.issue,
+                  'number': self.number,
+                  'start_date': start_date,
+                  'end_date': end_date,
+                  'position': self.position}
+        return result
+
+    def update_dict(self, data):
+        start_date = data.pop('start_date', None)
+        end_date = data.pop('end_date', None)
+        set_attribute(self, 'during', DateInterval([start_date, end_date]))
+
+        for key, value in data.items():
+            if key.startswith('_'):
+                continue
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        relation = Relation()
+        relation.update_dict(data)
+        return relation
+
+
+class DescriptionType(Base):
+    __tablename__ = 'description_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class DescriptionFormat(Base):
+    __tablename__ = 'description_format_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class Description(Base):
+    __tablename__ = 'descriptions'
+
+    id = Column(Integer, Sequence('descriptions_id_seq'), primary_key=True)
+    work_id = Column(Integer,
+                     ForeignKey('works.id'),
+                     index=True,
+                     nullable=False)
+    work = relationship('Work',
+                        foreign_keys=[work_id],
+                        back_populates='descriptions')
+    target_id = Column(Integer,
+                       ForeignKey('works.id'),
+                       nullable=True)
+    type = Column(Unicode(32),
+                  ForeignKey('description_type_schemes.key'),
+                  nullable=False)
+    format = Column(Unicode(32),
+                  ForeignKey('description_format_schemes.key'),
+                  nullable=False)
+    value = Column(UnicodeText, nullable=False)
+    position = Column(Integer)
+
+    def to_dict(self):
+        if self.target_id is None:
+            target_name = None
+        else:
+            target_name = self.target.title
+
+        result = {'id': self.id,
+                  'type': self.type,
+                  'format': self.format,
+                  'value': self.value,
+                  'work_id': self.work_id,
+                  '_work_name': self.work.title,
+                  'target_id': self.target_id,
+                  '_target_name': target_name,
+                  'position': self.position}
+
+        return result
+
+    def update_dict(self, data):
+        for key, value in data.items():
+            if key.startswith('_'):
+                continue
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        description = Description()
+        description.update_dict(data)
+        return description
+
 
 class Work(Base):
     __tablename__ = 'works'
     id = Column(Integer, Sequence('works_id_seq'), primary_key=True)
     type = Column(Unicode(32),
                   ForeignKey('work_type_schemes.key'),
+                  index=True,
                   nullable=False)
     title = Column(UnicodeText, nullable=False)
     issued = Column(Date, nullable=False)
     during = Column(DateRangeType, nullable=False)
+
+    descriptions = relationship('Description',
+                                back_populates='work',
+                                foreign_keys=[Description.work_id],
+                                order_by='Description.position',
+                                collection_class=ordering_list('position'),
+                                cascade='all, delete-orphan')
+    identifiers = relationship('Identifier',
+                               back_populates='work',
+                               cascade='all, delete-orphan')
+    measures = relationship('Measure',
+                            back_populates='work',
+                            cascade='all, delete-orphan')
+    expressions = relationship('Expression',
+                            back_populates='work',
+                            cascade='all, delete-orphan')
+
     contributors = relationship('Contributor',
                                 back_populates='work',
                                 order_by='Contributor.position',
-                                collection_class=ordering_list('position'))
+                                collection_class=ordering_list('position'),
+                                cascade='all, delete-orphan')
+
     affiliations = relationship('Affiliation', back_populates='work')
+
+    relations = relationship('Relation',
+                             back_populates='work',
+                             foreign_keys=[Relation.work_id],
+                             order_by='Relation.position',
+                             collection_class=ordering_list('position'),
+                             cascade='all, delete-orphan')
 
     def to_dict(self):
         start_date = end_date = None
@@ -69,15 +243,64 @@ class Work(Base):
                   'issued': self.issued,
                   'start_date': start_date,
                   'end_date': end_date}
+
+        result['identifiers'] = [{'type': a.type, 'value': a.value}
+                                 for a in self.identifiers]
+        result['measures'] = [{'type': a.type, 'value': a.value}
+                              for a in self.measures]
+
+        result['contributors'] = []
+        for contributor in self.contributors:
+            contributor = contributor.to_dict()
+            result['contributors'].append(
+                {'person_id': contributor['person_id'],
+                 'id': contributor['id'],
+                 '_person_name': contributor['_person_name'],
+                 'role': contributor['role'],
+                 'location': contributor['location'],
+                 'start_date': contributor['start_date'],
+                 'end_date': contributor['end_date'],
+                 'position': contributor['position'],
+                 'affiliations': [{'group_id': a['group_id'],
+                                   '_group_name': a['_group_name'],
+                                   'id': a['id'],
+                                   'position': a['position']}for a in
+                                  contributor['affiliations']]})
+
+        result['descriptions'] = []
+        for description in self.descriptions:
+            description = description.to_dict()
+            result['descriptions'].append(
+                {'id': description['id'],
+                 'target_id': description['target_id'],
+                 '_target_name': description['_target_name'],
+                 'type': description['type'],
+                 'value': description['value'],
+                 'format': description['format'],
+                 'position': description['position']})
+
+        result['relations'] = []
+        for relation in self.relations:
+            relation = relation.to_dict()
+            result['relations'].append(
+                {'id': relation['id'],
+                 'target_id': relation['target_id'],
+                 '_target_name': relation['_target_name'],
+                 '_target_type': relation['_target_type'],
+                 'type': relation['type'],
+                 'location': relation['location'],
+                 'start_date': relation['start_date'],
+                 'end_date': relation['end_date'],
+                 'starting': relation['starting'],
+                 'ending': relation['ending'],
+                 'total': relation['total'],
+                 'volume': relation['volume'],
+                 'issue': relation['issue'],
+                 'number': relation['number'],
+                 'position': relation['position']})
+
         return result
 
-        result = {}
-        for prop in instance_dict(self):
-            if prop.startswith('_'):
-                continue
-            result[prop] = getattr(self, prop)
-
-        return result
 
     def update_dict(self, data):
         start_date = data.pop('start_date', None)
@@ -87,11 +310,96 @@ class Work(Base):
         if start_date is None and end_date is None:
             set_attribute(self, 'during', DateInterval([issued, issued]))
 
+        if 'identifiers' in data:
+            new_values = set([(a['type'], a['value'])
+                              for a in data.pop('identifiers', [])])
+            for value in self.identifiers:
+                key = (value.type, value.value)
+                if key in new_values:
+                    new_values.remove(key)
+                else:
+                    self.identifiers.remove(value)
+            for new_value in new_values:
+                type, value = new_value
+                self.identifiers.append(Identifier(type=type,
+                                                   value=value,
+                                                   work_id=data.get('id')))
+        if 'measures' in data:
+            new_values = set([(a['type'], a['value'])
+                              for a in data.pop('measures', [])])
+            for value in self.measures:
+                key = (value.type, value.value)
+                if key in new_values:
+                    new_values.remove(key)
+                else:
+                    self.measures.remove(value)
+            for new_value in new_values:
+                type, value = new_value
+                self.measures.append(Measure(type=type,
+                                             value=value,
+                                             work_id=data.get('id')))
+
+        if 'contributors' in data:
+            existing_contributors = dict([(c.id, c) for c in self.contributors])
+            new_contributors = []
+            for contributor_data in data.pop('contributors', []):
+                contributor_data['work_id'] = self.id
+                affiliations_data = contributor_data.pop('affiliations', [])
+                if contributor_data.get('id') in existing_contributors:
+                    contributor = existing_contributors.pop(contributor_data['id'])
+                    contributor.update_dict(contributor_data)
+
+                else:
+                    contributor = Contributor.from_dict(contributor_data)
+
+                existing_affiliations = dict([(c.id, c) for c in contributor.affiliations])
+                new_affiliations = []
+                for affiliation_data in affiliations_data:
+                    affiliation_data['work_id'] = self.id
+                    if affiliation_data.get('id') in existing_affiliations:
+                        affiliation = existing_affiliations.pop(
+                            affiliation_data['id'])
+                        affiliation.update_dict(affiliation_data)
+                    else:
+                        affiliation = Affiliation.from_dict(affiliation_data)
+                    new_affiliations.append(affiliation)
+                contributor.affiliations[:] = new_affiliations
+
+                new_contributors.append(contributor)
+            self.contributors[:] = new_contributors
+
+        if 'descriptions' in data:
+            existing_descriptions = dict([(c.id, c) for c in self.descriptions])
+            new_descriptions = []
+            for description_data in data.pop('descriptions', []):
+                description_data['work_id'] = self.id
+                if description_data.get('id') in existing_descriptions:
+                    description = existing_descriptions.pop(description_data['id'])
+                    description.update_dict(description_data)
+                else:
+                    description = Description.from_dict(description_data)
+                new_descriptions.append(description)
+            self.descriptions[:] = new_descriptions
+
+        if 'relations' in data:
+            existing_relations = dict([(c.id, c) for c in self.relations])
+            new_relations = []
+            for relation_data in data.pop('relations', []):
+                relation_data['work_id'] = self.id
+                if relation_data.get('id') in existing_relations:
+                    relation = existing_relations.pop(relation_data['id'])
+                    relation.update_dict(relation_data)
+                else:
+                    relation = Relation.from_dict(relation_data)
+                new_relations.append(relation)
+            self.relations[:] = new_relations
+
 
         for key, value in data.items():
             if key.startswith('_'):
                 continue
             set_attribute(self, key, value)
+
 
     @classmethod
     def from_dict(cls, data):
@@ -188,6 +496,154 @@ class Person(Base):
         person = Person()
         person.update_dict(data)
         return person
+
+
+class IdentifierType(Base):
+    __tablename__ = 'identifier_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class Identifier(Base):
+    __tablename__ = 'identifiers'
+    #__table_args__ = (
+    #    UniqueConstraint('type', 'value'),)
+
+
+    id = Column(Integer, Sequence('identifiers_id_seq'), primary_key=True)
+    work_id = Column(Integer,
+                      ForeignKey('works.id'),
+                      index=True,
+                      nullable=False)
+    work = relationship('Work', back_populates='identifiers')
+    type = Column(Unicode(32),
+                  ForeignKey('identifier_type_schemes.key'),
+                  nullable=False)
+    value = Column(Unicode(1024), nullable=False)
+
+class ConceptType(Base):
+    __tablename__ = 'concept_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class Concept(Base):
+    __tablename__ = 'concepts'
+
+    id = Column(Integer, Sequence('concepts_id_seq'), primary_key=True)
+
+    parent_id = Column(Integer,
+                      ForeignKey('concepts.id'),
+                      index=True,
+                      nullable=True)
+
+    parent = relationship('Concept', remote_side=[id], lazy='joined')
+
+    type = Column(Unicode(32),
+                    ForeignKey('concept_type_schemes.key'),
+                    nullable=False)
+    label = Column(Unicode(1024), nullable=False)
+    notation = Column(Unicode(128), nullable=False)
+
+
+
+class MeasureType(Base):
+    __tablename__ = 'measure_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class MeasureUnit(Base):
+    __tablename__ = 'measure_unit_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class Measure(Base):
+    __tablename__ = 'measures'
+
+    id = Column(Integer, Sequence('measures_id_seq'), primary_key=True)
+    work_id = Column(Integer,
+                      ForeignKey('works.id'),
+                      index=True,
+                      nullable=False)
+    work = relationship('Work', back_populates='measures')
+    type = Column(Unicode(32),
+                  ForeignKey('measure_type_schemes.key'),
+                  nullable=False)
+    unit = Column(Unicode(32),
+                  ForeignKey('measure_unit_schemes.key'),
+                  nullable=True)
+    during = Column(DateRangeType)
+    value = Column(Unicode(128), nullable=False)
+
+
+class ExpressionType(Base):
+    __tablename__ = 'expression_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class ExpressionFormat(Base):
+    __tablename__ = 'expression_format_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class ExpressionAccessRight(Base):
+    __tablename__ = 'expression_access_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+
+class ExpressionMeasureType(Base):
+    __tablename__ = 'expression_measure_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class ExpressionMeasureUnit(Base):
+    __tablename__ = 'expression_measure_unit_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
+class ExpressionMeasure(Base):
+    __tablename__ = 'expression_measures'
+
+    id = Column(Integer, Sequence('expression_measures_id_seq'), primary_key=True)
+    expression_id = Column(Integer,
+                      ForeignKey('expressions.id'),
+                      index=True,
+                      nullable=False)
+    expression = relationship('Expression', back_populates='measures')
+    type = Column(Unicode(32),
+                  ForeignKey('expression_measure_type_schemes.key'),
+                  nullable=False)
+    unit = Column(Unicode(32),
+                  ForeignKey('expression_measure_unit_schemes.key'),
+                  nullable=False)
+    value = Column(Unicode(128), nullable=False)
+
+class Expression(Base):
+    __tablename__ = 'expressions'
+
+    id = Column(Integer, Sequence('expressions_id_seq'), primary_key=True)
+    work_id = Column(Integer,
+                      ForeignKey('works.id'),
+                      index=True,
+                      nullable=False)
+    work = relationship('Work', back_populates='expressions')
+    type = Column(Unicode(32),
+                  ForeignKey('expression_type_schemes.key'),
+                  nullable=False)
+    format = Column(Unicode(32),
+                  ForeignKey('expression_format_schemes.key'),
+                  nullable=False)
+    access = Column(Unicode(32),
+                  ForeignKey('expression_access_schemes.key'),
+                  nullable=False)
+    measures = relationship('ExpressionMeasure',
+                            back_populates='expression',
+                            cascade='all, delete-orphan')
+    during = Column(DateRangeType)
+    name = Column(Unicode(128), nullable=False)
+    blob_key = Column(Unicode(1024), nullable=False)
+    uri = Column(Unicode(1024), nullable=False)
+
+
 
 class PersonAccountType(Base):
     __tablename__ = 'person_account_type_schemes'
@@ -466,7 +922,6 @@ class Contributor(Base):
                   ForeignKey('contributor_role_schemes.key'),
                   index=True,
                   nullable=False)
-    during = Column(DateRangeType, nullable=True)
     work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
     work = relationship('Work', back_populates='contributors', lazy='joined')
 
@@ -476,9 +931,14 @@ class Contributor(Base):
     group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=True)
     group = relationship('Group', lazy='joined')
 
+    during = Column(DateRangeType, nullable=True)
+    location = Column(Unicode(1024), nullable=True)
+
     position = Column(Integer)
 
-    affiliations = relationship('Affiliation', back_populates='contributor')
+    affiliations = relationship('Affiliation',
+                                back_populates='contributor',
+                                lazy='joined')
 
 
     def to_dict(self):
@@ -505,7 +965,13 @@ class Contributor(Base):
                   '_group_name': group_name,
                   'start_date': start_date,
                   'end_date': end_date,
+                  'location': self.location,
                   'position': self.position}
+
+        result['affiliations'] = []
+        for affiliation in self.affiliations:
+            result['affiliations'].append(affiliation.to_dict())
+
         return result
 
     def update_dict(self, data):
@@ -513,9 +979,10 @@ class Contributor(Base):
         start_date = data.pop('start_date', None)
         end_date = data.pop('end_date', None)
         set_attribute(self, 'during', DateInterval([start_date, end_date]))
+
         for key, value in data.items():
             if key.startswith('_'):
-               continue
+                continue
             set_attribute(self, key, value)
 
     @classmethod
@@ -536,8 +1003,7 @@ class Affiliation(Base):
                             ForeignKey('contributors.id'),
                             index=True, nullable=True)
     contributor = relationship('Contributor',
-                               back_populates='affiliations',
-                               lazy='joined')
+                               back_populates='affiliations')
 
     group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=True)
     group = relationship('Group', back_populates='affiliations', lazy='joined')
@@ -545,25 +1011,11 @@ class Affiliation(Base):
     position = Column(Integer)
 
     def to_dict(self):
-
-        if self.person is None:
-            person_name = None
-        else:
-            person_name = self.person.name
-
-        if self.group is None:
-            group_name = None
-        else:
-            group_name = self.group.name
-
         result = {'id': self.id,
-                  'role': self.role,
                   'work_id': self.work_id,
-                  '_work_name': self.work.title,
-                  'person_id': self.person_id,
-                  '_person_name': person_name,
+                  'contributor_id': self.contributor_id,
                   'group_id': self.group_id,
-                  '_group_name': group_name,
+                  '_group_name': self.group.name,
                   'position': self.position}
         return result
 
