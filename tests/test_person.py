@@ -325,6 +325,19 @@ class PersonMembersTest(PersonWebTest):
                                  status=200)
         assert len(out.json['memberships']) == 1
 
+    def test_adding_inline_position(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.put_json('/api/v1/person/records/%s' % self.john_id,
+                                 {'family_name': 'Doe',
+                                  'given_name': 'John',
+                                  'id': self.john_id,
+                                  'positions': [{'group_id': self.corp_id,
+                                                 'type': 'academic',
+                                                 'description': 'Full Professor'}]},
+                                 headers=headers,
+                                 status=200)
+        assert len(out.json['positions']) == 1
+
 class PersonRetrievalWebTest(PersonWebTest):
     def setUp(self):
         super(PersonRetrievalWebTest, self).setUp()

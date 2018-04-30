@@ -4,6 +4,7 @@ from intervals import DateInterval
 from sqlalchemy import (
     Column,
     Integer,
+    BigInteger,
     Unicode,
     UnicodeText,
     Date,
@@ -14,10 +15,12 @@ from sqlalchemy import (
     CheckConstraint
     )
 from sqlalchemy.orm import relationship, configure_mappers
+from sqlalchemy.schema import Index
 from sqlalchemy.orm.attributes import instance_dict
 from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy_utils import DateRangeType, LtreeType, PasswordType
+from sqlalchemy.dialects.postgresql import JSON, TSVECTOR
 from sqlalchemy.orm.attributes import set_attribute
 Base = declarative_base()
 
@@ -42,6 +45,11 @@ class ContributorRole(Base):
     key = Column(Unicode(32), primary_key=True)
     label = Column(Unicode(128))
 
+class PositionType(Base):
+    __tablename__ = 'position_type_schemes'
+    key = Column(Unicode(32), primary_key=True)
+    label = Column(Unicode(128))
+
 class RelationType(Base):
     __tablename__ = 'relation_type_schemes'
     key = Column(Unicode(32), primary_key=True)
@@ -58,13 +66,13 @@ class Relation(Base):
 
     __tablename__ = 'relations'
     id = Column(Integer, Sequence('relations_id_seq'), primary_key=True)
-    work_id = Column(Integer,
+    work_id = Column(BigInteger,
                      ForeignKey('works.id'),
                      index=True)
     work = relationship('Work',
                         foreign_keys=[work_id],
                         back_populates='relations')
-    target_id = Column(Integer,
+    target_id = Column(BigInteger,
                        ForeignKey('works.id'),
                        index=True,
                        nullable=False)
@@ -85,6 +93,9 @@ class Relation(Base):
     during = Column(DateRangeType, nullable=True)
     position = Column(Integer, nullable=False)
 
+    description = Column(UnicodeText, nullable=True)
+
+
     def to_dict(self):
         start_date = end_date = None
         if self.during:
@@ -104,6 +115,7 @@ class Relation(Base):
                   'volume': self.volume,
                   'issue': self.issue,
                   'number': self.number,
+                  'description': self.description,
                   'start_date': start_date,
                   'end_date': end_date,
                   'position': self.position}
@@ -140,14 +152,14 @@ class Description(Base):
     __tablename__ = 'descriptions'
 
     id = Column(Integer, Sequence('descriptions_id_seq'), primary_key=True)
-    work_id = Column(Integer,
+    work_id = Column(BigInteger,
                      ForeignKey('works.id'),
                      index=True,
                      nullable=False)
     work = relationship('Work',
                         foreign_keys=[work_id],
                         back_populates='descriptions')
-    target_id = Column(Integer,
+    target_id = Column(BigInteger,
                        ForeignKey('works.id'),
                        nullable=True)
     type = Column(Unicode(32),
@@ -192,7 +204,11 @@ class Description(Base):
 
 class Work(Base):
     __tablename__ = 'works'
-    id = Column(Integer, Sequence('works_id_seq'), primary_key=True)
+    __table_args__ = (Index('ix_works_search_terms',
+                            'search_terms',
+                            postgresql_using='gin'),)
+
+    id = Column(BigInteger, Sequence('works_id_seq'), primary_key=True)
     type = Column(Unicode(32),
                   ForeignKey('work_type_schemes.key'),
                   index=True,
@@ -231,6 +247,7 @@ class Work(Base):
                              order_by='Relation.position',
                              collection_class=ordering_list('position'),
                              cascade='all, delete-orphan')
+    search_terms = Column(TSVECTOR)
 
     def to_dict(self):
         start_date = end_date = None
@@ -303,6 +320,9 @@ class Work(Base):
 
 
     def update_dict(self, data):
+        if self.id is None and data['id']:
+            self.id = data.pop('id')
+
         start_date = data.pop('start_date', None)
         end_date = data.pop('end_date', None)
         issued = data['issued']
@@ -342,6 +362,7 @@ class Work(Base):
         if 'contributors' in data:
             existing_contributors = dict([(c.id, c) for c in self.contributors])
             new_contributors = []
+
             for contributor_data in data.pop('contributors', []):
                 contributor_data['work_id'] = self.id
                 affiliations_data = contributor_data.pop('affiliations', [])
@@ -410,8 +431,10 @@ class Work(Base):
 
 class Person(Base):
     __tablename__ = 'persons'
-
-    id = Column(Integer, Sequence('person_id_seq'), primary_key=True)
+    __table_args__ = (Index('ix_persons_search_terms',
+                            'search_terms',
+                            postgresql_using='gin'),)
+    id = Column(BigInteger, Sequence('person_id_seq'), primary_key=True)
     name = Column(Unicode(128), nullable=False)
     family_name = Column(Unicode(128))
     given_name = Column(Unicode(128))
@@ -420,10 +443,16 @@ class Person(Base):
     honorary = Column(Unicode(64))
     alternative_name = Column(UnicodeText)
 
+    search_terms = Column(TSVECTOR)
+
+
     owners = relationship('Owner', back_populates='person')
     memberships = relationship('Membership',
                                back_populates='person',
                                cascade='all, delete-orphan')
+    positions = relationship('Position',
+                             back_populates='person',
+                             cascade='all, delete-orphan')
     accounts = relationship('PersonAccount',
                             back_populates='person',
                             cascade='all, delete-orphan')
@@ -448,6 +477,16 @@ class Person(Base):
                  '_group_name': membership['_group_name'],
                  'start_date': membership['start_date'],
                  'end_date': membership['end_date']})
+        result['positions'] = []
+        for position in self.positions:
+            position = position.to_dict()
+            result['positions'].append(
+                {'group_id': position['group_id'],
+                 '_group_name': position['_group_name'],
+                 'type': position['type'],
+                 'description': position['description'],
+                 'start_date': position['start_date'],
+                 'end_date': position['end_date']})
 
         return result
 
@@ -488,6 +527,24 @@ class Person(Base):
                                               person_id=data.get('id'),
                                               start_date=start_date,
                                               end_date=end_date)))
+        if 'positions' in data:
+            # only update positions if key is present
+            new_positions = dict([((m['group_id'],
+                                    m.get('start_date'),
+                                    m.get('end_date')), m)
+                                  for m in data.pop('positions', [])])
+            for position in self.positions:
+                position_dict = position.to_dict()
+                key = (position_dict['group_id'],
+                       position_dict.get('start_date'),
+                       position_dict.get('end_date'))
+                if key in new_positions:
+                    del new_positions[key]
+                else:
+                    self.positions.remove(position)
+            for new_position in new_positions.values():
+                self.positions.append(
+                    Position.from_dict(new_position))
         for key, value in data.items():
             set_attribute(self, key, value)
 
@@ -510,7 +567,7 @@ class Identifier(Base):
 
 
     id = Column(Integer, Sequence('identifiers_id_seq'), primary_key=True)
-    work_id = Column(Integer,
+    work_id = Column(BigInteger,
                       ForeignKey('works.id'),
                       index=True,
                       nullable=False)
@@ -528,9 +585,9 @@ class ConceptType(Base):
 class Concept(Base):
     __tablename__ = 'concepts'
 
-    id = Column(Integer, Sequence('concepts_id_seq'), primary_key=True)
+    id = Column(BigInteger, Sequence('concepts_id_seq'), primary_key=True)
 
-    parent_id = Column(Integer,
+    parent_id = Column(BigInteger,
                       ForeignKey('concepts.id'),
                       index=True,
                       nullable=True)
@@ -559,7 +616,7 @@ class Measure(Base):
     __tablename__ = 'measures'
 
     id = Column(Integer, Sequence('measures_id_seq'), primary_key=True)
-    work_id = Column(Integer,
+    work_id = Column(BigInteger,
                       ForeignKey('works.id'),
                       index=True,
                       nullable=False)
@@ -621,7 +678,7 @@ class Expression(Base):
     __tablename__ = 'expressions'
 
     id = Column(Integer, Sequence('expressions_id_seq'), primary_key=True)
-    work_id = Column(Integer,
+    work_id = Column(BigInteger,
                       ForeignKey('works.id'),
                       index=True,
                       nullable=False)
@@ -652,12 +709,9 @@ class PersonAccountType(Base):
 
 class PersonAccount(Base):
     __tablename__ = 'person_accounts'
-    __table_args__ = (
-        UniqueConstraint('type', 'value'),)
-
 
     id = Column(Integer, Sequence('person_accounts_id_seq'), primary_key=True)
-    person_id = Column(Integer,
+    person_id = Column(BigInteger,
                       ForeignKey('persons.id'),
                       index=True,
                       nullable=False)
@@ -682,12 +736,9 @@ class GroupAccountType(Base):
 
 class GroupAccount(Base):
     __tablename__ = 'group_accounts'
-    __table_args__ = (
-        UniqueConstraint('type', 'value'),)
-
 
     id = Column(Integer, Sequence('group_accounts_id_seq'), primary_key=True)
-    group_id = Column(Integer,
+    group_id = Column(BigInteger,
                       ForeignKey('groups.id'),
                       index=True,
                       nullable=False)
@@ -699,26 +750,36 @@ class GroupAccount(Base):
 
 class Group(Base):
     __tablename__ = 'groups'
+    __table_args__ = (Index('ix_groups_search_terms',
+                            'search_terms',
+                            postgresql_using='gin'),)
 
-    id = Column(Integer, Sequence('group_id_seq'), primary_key=True)
+
+    id = Column(BigInteger, Sequence('group_id_seq'), primary_key=True)
     type = Column(Unicode(32),
                   ForeignKey('group_type_schemes.key'),
                   nullable=False)
-    name = Column(Unicode(256), nullable=False)
-    international_name = Column(Unicode(256))
-    native_name = Column(Unicode(256))
-    abbreviated_name = Column(Unicode(128))
+    name = Column(UnicodeText, nullable=False)
+    international_name = Column(UnicodeText)
+    native_name = Column(UnicodeText)
+    abbreviated_name = Column(UnicodeText)
+    location = Column(UnicodeText)
+    during = Column(DateRangeType, nullable=True)
 
-    parent_id = Column(Integer,
+    parent_id = Column(BigInteger,
                       ForeignKey('groups.id'),
                       index=True,
                       nullable=True)
+    search_terms = Column(TSVECTOR)
 
     parent = relationship('Group', remote_side=[id], lazy='joined')
 
+
     members = relationship('Membership', back_populates='group')
+    positions = relationship('Position', back_populates='group')
     owners = relationship('Owner', back_populates='group')
     affiliations = relationship('Affiliation', back_populates='group')
+
     accounts = relationship('GroupAccount',
                             back_populates='group',
                             cascade='all, delete-orphan')
@@ -726,10 +787,20 @@ class Group(Base):
 
     def to_dict(self):
         result = {}
-        for prop in instance_dict(self):
-            if prop.startswith('_'):
-                continue
-            result[prop] = getattr(self, prop)
+        start_date = end_date = None
+        if self.during:
+            start_date, end_date = parse_duration(self.during)
+
+        return {'id': self.id,
+                'type': self.type,
+                'name': self.name,
+                'international_name': self.international_name,
+                'native_name': self.native_name,
+                'abbreviated_name': self.abbreviated_name,
+                'location': self.location,
+                'start_date': start_date,
+                'end_date': end_date}
+
         if self.parent_id:
             result['_parent_name'] = self.parent.name
 
@@ -739,6 +810,10 @@ class Group(Base):
         return result
 
     def update_dict(self, data):
+        start_date = data.pop('start_date', None)
+        end_date = data.pop('end_date', None)
+        set_attribute(self, 'during', DateInterval([start_date, end_date]))
+
         if data.get('accounts') is not None:
             new_accounts = set([(a['type'], a['value'])
                                 for a in data.pop('accounts', [])])
@@ -768,13 +843,19 @@ class Group(Base):
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column(Integer, Sequence('users_id_seq'), primary_key=True)
+    __table_args__ = (Index('ix_users_search_terms',
+                            'search_terms',
+                            postgresql_using='gin'),)
+
+    id = Column(BigInteger, Sequence('users_id_seq'), primary_key=True)
     user_group = Column(Integer(),
                         ForeignKey('user_groups.id'),
                         nullable=False)
     userid = Column(Unicode(128), index=True, nullable=False)
     credentials = Column(PasswordType(schemes=['pbkdf2_sha512']),
                          nullable=False)
+
+    search_terms = Column(TSVECTOR)
 
     owns = relationship('Owner',
                         back_populates='user',
@@ -837,16 +918,16 @@ class Owner(Base):
                         name='owner_check_person_or_group_id_required'),
                         )
     id = Column(Integer, Sequence('owners_id_seq'), primary_key=True)
-    user_id = Column(Integer,
+    user_id = Column(BigInteger,
                      ForeignKey('users.id'),
                      index=True,
                      nullable=False)
     user = relationship('User', back_populates='owns')
-    person_id = Column(Integer,
+    person_id = Column(BigInteger,
                        ForeignKey('persons.id'),
                        index=True)
     person = relationship('Person', back_populates='owners')
-    group_id = Column(Integer,
+    group_id = Column(BigInteger,
                       ForeignKey('groups.id'),
                       index=True)
     group = relationship('Group', back_populates='owners')
@@ -865,13 +946,13 @@ class Owner(Base):
 class Membership(Base):
     __tablename__ = 'memberships'
     id = Column(Integer, Sequence('memberships_id_seq'), primary_key=True)
-    person_id = Column(Integer,
+    person_id = Column(BigInteger,
                        ForeignKey('persons.id'),
                        index=True,
                        nullable=False)
     person = relationship('Person', back_populates='memberships', lazy='joined')
 
-    group_id = Column(Integer,
+    group_id = Column(BigInteger,
                       ForeignKey('groups.id'),
                       index=True,
                       nullable=False)
@@ -910,6 +991,64 @@ class Membership(Base):
         membership.update_dict(data)
         return membership
 
+class Position(Base):
+    __tablename__ = 'positions'
+    id = Column(Integer, Sequence('positions_id_seq'), primary_key=True)
+    type = Column(Unicode(32),
+                  ForeignKey('position_type_schemes.key'),
+                  index=True,
+                  nullable=False)
+    person_id = Column(BigInteger,
+                       ForeignKey('persons.id'),
+                       index=True,
+                       nullable=False)
+    person = relationship('Person', back_populates='positions', lazy='joined')
+
+    group_id = Column(BigInteger,
+                      ForeignKey('groups.id'),
+                      index=True,
+                      nullable=False)
+    group = relationship('Group', back_populates='positions', lazy='joined')
+
+    description = Column(UnicodeText, nullable=True)
+
+    during = Column(DateRangeType)
+    provenance = Column(Unicode(1024))
+
+
+    def to_dict(self):
+        start_date = end_date = None
+        if self.during:
+            start_date, end_date = parse_duration(self.during)
+
+        result = {'id': self.id,
+                  'person_id': self.person_id,
+                  '_person_name': self.person.name,
+                  'type': self.type,
+                  'group_id': self.group_id,
+                  '_group_name': self.group.name,
+                  'description': self.description,
+                  'start_date': start_date,
+                  'end_date': end_date,
+                  'provenance': self.provenance}
+        return result
+
+    def update_dict(self, data):
+
+        start_date = data.pop('start_date', None)
+        end_date = data.pop('end_date', None)
+        set_attribute(self, 'during', DateInterval([start_date, end_date]))
+        for key, value in data.items():
+            if key.startswith('_'):
+                continue
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        position = Position()
+        position.update_dict(data)
+        return position
+
 
 class Contributor(Base):
     "An Actor that made a specific contribution to a work"
@@ -922,17 +1061,19 @@ class Contributor(Base):
                   ForeignKey('contributor_role_schemes.key'),
                   index=True,
                   nullable=False)
-    work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
+    work_id = Column(BigInteger, ForeignKey('works.id'), index=True, nullable=False)
     work = relationship('Work', back_populates='contributors', lazy='joined')
 
-    person_id = Column(Integer, ForeignKey('persons.id'), index=True, nullable=True)
+    person_id = Column(BigInteger, ForeignKey('persons.id'), index=True, nullable=True)
     person = relationship('Person', lazy='joined')
 
-    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=True)
+    group_id = Column(BigInteger, ForeignKey('groups.id'), index=True, nullable=True)
     group = relationship('Group', lazy='joined')
 
+    description = Column(UnicodeText, nullable=True)
+
     during = Column(DateRangeType, nullable=True)
-    location = Column(Unicode(1024), nullable=True)
+    location = Column(UnicodeText, nullable=True)
 
     position = Column(Integer)
 
@@ -965,6 +1106,7 @@ class Contributor(Base):
                   '_group_name': group_name,
                   'start_date': start_date,
                   'end_date': end_date,
+                  'description': self.description,
                   'location': self.location,
                   'position': self.position}
 
@@ -996,7 +1138,7 @@ class Affiliation(Base):
 
     id = Column(Integer, Sequence('affiliations_id_seq'), primary_key=True)
 
-    work_id = Column(Integer, ForeignKey('works.id'), index=True, nullable=False)
+    work_id = Column(BigInteger, ForeignKey('works.id'), index=True, nullable=False)
     work = relationship('Work', back_populates='affiliations', lazy='joined')
 
     contributor_id = Column(Integer,
@@ -1005,7 +1147,7 @@ class Affiliation(Base):
     contributor = relationship('Contributor',
                                back_populates='affiliations')
 
-    group_id = Column(Integer, ForeignKey('groups.id'), index=True, nullable=True)
+    group_id = Column(BigInteger, ForeignKey('groups.id'), index=True, nullable=True)
     group = relationship('Group', back_populates='affiliations', lazy='joined')
 
     position = Column(Integer)
@@ -1040,6 +1182,7 @@ class Repository(Base):
     vhost_name = Column(Unicode(128), nullable=False, unique=True)
     config_revision = Column(Integer, nullable=False)
     schema_version = Column(Unicode(32), nullable=False)
+    settings = Column(JSON)
 
     __mapper_args__ = {
         'version_id_col': config_revision

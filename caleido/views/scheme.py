@@ -81,3 +81,51 @@ class TypeAPI(object):
     def collection_get(self):
         listing = self.context.list()
         return TypeListingSchema().serialize(listing)
+
+
+
+class SettingsSchema(colander.MappingSchema):
+    title = colander.SchemaNode(colander.String())
+
+class SettingsResponseSchema(colander.MappingSchema):
+    body = SettingsSchema()
+
+
+@resource(name='Settings',
+          collection_path='/api/v1/schemes/settngs',
+          path='/api/v1/schemes/settings',
+          tags=['config'],
+          api_security=[{'jwt':[]}],
+          factory=type_factory)
+class SettingsAPI(object):
+    def __init__(self, request, context):
+        self.request = request
+        self.context = context
+
+    @view(permission='view',
+          response_schemas={
+        '200': SettingsResponseSchema(description='Ok'),
+        '401': ErrorResponseSchema(description='Unauthorized'),
+        '403': ErrorResponseSchema(description='Forbidden'),
+        '404': ErrorResponseSchema(description='Not Found'),
+        })
+    def get(self):
+        "Retrieve Settings"
+        return self.request.repository.settings
+
+    @view(permission='edit',
+          schema=SettingsSchema(),
+          validators=(colander_body_validator,),
+          response_schemas={
+        '200': TypeResponseSchema(description='Ok'),
+        '400': ErrorResponseSchema(description='Bad Request'),
+        '401': ErrorResponseSchema(description='Unauthorized'),
+        '403': ErrorResponseSchema(description='Forbidden'),
+        '404': ErrorResponseSchema(description='Not Found'),
+        })
+    def put(self):
+        "Update Settings"
+        settings = self.request.json
+        self.request.repository.update_settings(settings)
+        return self.request.repository.settings
+

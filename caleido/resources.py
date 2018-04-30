@@ -16,7 +16,7 @@ from caleido.models import (
     User, Person, Group, GroupType, GroupAccountType, PersonAccountType,
     Membership, Work, WorkType, Contributor, ContributorRole, Affiliation,
     IdentifierType, MeasureType, DescriptionType, DescriptionFormat,
-    RelationType, Relation)
+    RelationType, Relation, PositionType)
 from caleido.exceptions import StorageError
 
 class ResourceFactory(object):
@@ -123,6 +123,7 @@ class BaseResource(object):
         try:
             self.session.flush()
         except sqlalchemy.exc.IntegrityError as err:
+            print(err)
             raise StorageError.from_err(err)
         return models
 
@@ -230,6 +231,10 @@ class UserResource(BaseResource):
             filters.append(User.userid == user_id)
         return filters
 
+    def pre_put_hook(self, model):
+        search_terms = [model.userid]
+        model.search_terms = sql.func.to_tsvector(' '.join(search_terms))
+        return model
 
 class PersonResource(BaseResource):
     orm_class = Person
@@ -254,13 +259,19 @@ class PersonResource(BaseResource):
 
     def pre_put_hook(self, model):
         name = model.family_name
+        search_terms = [name]
         if model.family_name_prefix:
             name = '%s %s' % (model.family_name_prefix, name)
+            search_terms.append(model.family_name_prefix)
         if model.initials:
             name = '%s, %s' % (name, model.initials)
+            search_terms.append(model.initials)
         if model.given_name:
             name = '%s (%s)' % (name, model.given_name)
+            search_terms.append(model.given_name)
         model.name = name
+
+        model.search_terms = sql.func.to_tsvector(' '.join(search_terms))
         return model
 
     def acl_filters(self, principals):
@@ -304,8 +315,13 @@ class GroupResource(BaseResource):
 
     def pre_put_hook(self, model):
         model.name = model.international_name
+        search_terms = [model.international_name]
+
         if model.abbreviated_name:
             model.name = '%s (%s)' % (model.name, model.abbreviated_name)
+            search_terms.append(model.abbreviated_name)
+
+        model.search_terms = sql.func.to_tsvector(' '.join(search_terms))
         return model
 
     def acl_filters(self, principals):
@@ -394,6 +410,11 @@ class WorkResource(BaseResource):
             # match nothing
             filters.append(Contributor.id == -1)
         return filters
+
+    def pre_put_hook(self, model):
+        search_terms = [model.title]
+        model.search_terms = sql.func.to_tsvector(' '.join(search_terms))
+        return model
 
     def listing(self,
                 text_query=None,
@@ -517,7 +538,7 @@ class WorkResource(BaseResource):
             )
 
         full_listing = full_listing.outerjoin(
-            Contributor, listed_works.c.id == Contributor.work_id).join(
+            Contributor, listed_works.c.id == Contributor.work_id).outerjoin(
               Person, Person.id == Contributor.person_id)
         full_listing = full_listing.outerjoin(
             Affiliation, Contributor.id == Affiliation.contributor_id).outerjoin(
@@ -558,12 +579,9 @@ class WorkResource(BaseResource):
                 'limit': limit,
                 'offset': offset}
 
-
-
 class MembershipResource(BaseResource):
     orm_class = Membership
     key_col_name = 'id'
-
 
     def __acl__(self):
         yield (Allow, 'group:admin', ALL_PERMISSIONS)
@@ -756,6 +774,7 @@ class TypeResource(object):
                'work': WorkType,
                'identifier': IdentifierType,
                'measure': MeasureType,
+               'position': PositionType,
                'relation': RelationType,
                'description': DescriptionType,
                'descriptionFormat': DescriptionFormat,

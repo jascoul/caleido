@@ -16,6 +16,7 @@ from caleido.models import (Base,
                             MeasureType,
                             RelationType,
                             DescriptionType,
+                            PositionType,
                             DescriptionFormat,
                             GroupAccountType)
 
@@ -51,11 +52,17 @@ DEFAULTS = {
                             'markdown': 'Markdown Text',
                             'html': 'HTML'},
     'measure_types': {'cites': 'Citations',
+                      'openAccess': 'Open Access',
                       'impactFactor': 'Impact Factor'},
+    'position_types': {'academic': 'Academic Side Position',
+                       'commercial': 'Commercial Side Position',
+                       'government': 'Governmental Side Position',
+                       'charitative': 'Charitative Side Position',
+                       'honorary': 'Honorary Side Position'},
     'group_account_types': {'email': 'email',
                             'local': 'Local',
-                            'wikipedia': 'Wikipedia'}
-    }
+                            'wikipedia': 'Wikipedia'},
+    'repository_settings': {'title': 'Caleido'}}
 
 class Storage(object):
     schema_version = '0.1'
@@ -68,11 +75,12 @@ class Storage(object):
             revisions[repository.namespace] = repository.to_dict()
         return revisions
 
-    def create_repository(self, session, namespace, vhost_name):
+    def create_repository(self, session, namespace, vhost_name, settings=None):
         self.registry['engine'].execute(CreateSchema(namespace))
         session.add(Repository(namespace=namespace,
                                schema_version=self.schema_version,
-                               vhost_name=vhost_name))
+                               vhost_name=vhost_name,
+                               settings=settings or DEFAULTS['repository_settings']))
         session.flush()
         session.execute('SET search_path TO %s, public' % namespace);
         Base.metadata.create_all(bind=session.connection())
@@ -144,6 +152,9 @@ class Storage(object):
         measure_types = DEFAULTS['measure_types']
         for key, label in measure_types.items():
             session.add(MeasureType(key=key, label=label))
+        position_types = DEFAULTS['position_types']
+        for key, label in position_types.items():
+            session.add(PositionType(key=key, label=label))
 
         session.flush()
         session.execute('SET search_path TO public');
@@ -188,12 +199,14 @@ class RepositoryConfig(object):
                  'relation_type': RelationType,
                  'description_type': DescriptionType,
                  'description_format': DescriptionFormat,
+                 'position_type': PositionType,
                  'measure_type': MeasureType}
 
-    def __init__(self, session, namespace, config_revision=0):
+    def __init__(self, session, namespace, config_revision=0, settings=None):
         self.session = session
         self.namespace = namespace
         self.config_revision = config_revision
+        self.settings = settings or {}
         if self.config_revision in REPOSITORY_CONFIG.get(self.namespace, {}):
             self.cached_config = REPOSITORY_CONFIG[
                 self.namespace][self.config_revision]
@@ -201,6 +214,14 @@ class RepositoryConfig(object):
             self.cached_config = {}
             REPOSITORY_CONFIG[self.namespace] = {
                 self.config_revision: self.cached_config}
+
+    def update_settings(self, settings):
+        self.settings = settings
+        repo = self.session.query(Repository).filter(
+            Repository.namespace == self.namespace).first()
+        repo.settings = self.settings
+        self.session.add(repo)
+        self.session.flush()
 
     def type_config(self, type):
         if type in self.cached_config:
@@ -254,7 +275,7 @@ def includeme(config):
     engine = engine_from_config(settings, prefix='sqlalchemy.')#, echo=True)
 
     session_factory = sessionmaker()
-    session_factory.configure(bind=engine)
+    session_factory.configure(bind=engine, autoflush=False)
 
     config.registry['engine'] = engine
     config.registry['dbsession_factory'] = session_factory
@@ -268,6 +289,8 @@ def includeme(config):
                 'caleido.repository.namespace'] = repository.namespace
             request.environ[
                 'caleido.repository.config_revision'] = repository.config_revision
+            request.environ[
+                'caleido.repository.settings'] = repository.settings
             session.execute(
                 'SET search_path TO %s, public' % repository.namespace);
         return session
@@ -276,7 +299,11 @@ def includeme(config):
         session = request.dbsession
         namespace = request.environ['caleido.repository.namespace']
         rev = request.environ['caleido.repository.config_revision']
-        repository = RepositoryConfig(session, namespace, config_revision=rev)
+        settings = request.environ['caleido.repository.settings']
+        repository = RepositoryConfig(session,
+                                      namespace,
+                                      config_revision=rev,
+                                      settings=settings)
         return repository
 
     config.add_request_method(new_dbsession, 'new_dbsession')

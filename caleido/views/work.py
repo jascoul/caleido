@@ -126,6 +126,7 @@ class WorkSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
             total = colander.SchemaNode(colander.String(), missing=None)
             volume = colander.SchemaNode(colander.String(), missing=None)
             issue = colander.SchemaNode(colander.String(), missing=None)
+            description = colander.SchemaNode(colander.String(), missing=None)
             location = colander.SchemaNode(colander.String(), missing=None)
             number = colander.SchemaNode(colander.String(), missing=None)
 
@@ -145,6 +146,7 @@ class WorkSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                                missing=colander.drop)
             start_date = colander.SchemaNode(colander.Date(), missing=None)
             end_date = colander.SchemaNode(colander.Date(), missing=None)
+            description = colander.SchemaNode(colander.String(), missing=None)
             location = colander.SchemaNode(colander.String(), missing=None)
 
             @colander.instantiate(missing=colander.drop)
@@ -356,7 +358,7 @@ class WorkRecordAPI(object):
                                      qs.get('end_date')])
             filters.append(Work.during.op('&&')(duration))
         if query:
-            filters.append(Work.title.ilike('%%%s%%' % query))
+            filters.append(Work.search_terms.match(query))
         filter_type = self.request.validated['querystring'].get('filter_type')
         if filter_type:
             filter_types = filter_type.split(',')
@@ -468,13 +470,15 @@ def work_listing_view(request):
                 editors.append(contributor)
             else:
                 authors.append(contributor)
-        type = 'report'
+        type = 'entry'
         if 'chapter' in item['type'].lower():
             type = 'chapter'
         elif 'book' in item['type'].lower():
             type = 'book'
         elif 'article' in item['type'].lower():
             type = 'article-journal'
+        elif 'paper' in item['type'].lower() or 'report' in item['type'].lower():
+            type = 'report'
 
         journal = {}
         for rel in item.get('relations', []):
@@ -530,7 +534,7 @@ def work_search_view(request):
     type = request.validated['querystring'].get('type')
     filters = []
     if query:
-        filters.append(Work.title.ilike('%%%s%%' % query))
+        filters.append(Work.search_terms.match(query))
     if type:
         filters.append(Work.type == type)
     from_query = request.context.session.query(Work)

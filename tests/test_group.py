@@ -41,6 +41,7 @@ class GroupWebTest(BaseTest):
         assert out.json['errors'][0]['location'] == 'body'
         assert out.json['errors'][0]['description'].startswith(
             '"foobar" is not one of')
+
     def test_corporate_group_name_generator(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.post_json(
@@ -58,6 +59,24 @@ class GroupWebTest(BaseTest):
             headers=headers,
             status=201)
         assert out.json['name'] == out.json['international_name']
+
+    def test_group_dates(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.post_json(
+            '/api/v1/group/records',
+            {'international_name': 'Some Historic Faculty',
+             'type': 'organisation',
+             'start_date': '1970-01-01',
+             'end_date': '1990-12-31'},
+            headers=headers,
+            status=201)
+        last_id = out.json['id']
+        out = self.api.get('/api/v1/group/records/%s' % last_id,
+                           headers=headers,
+                           status=200)
+
+        assert out.json['start_date'] == '1970-01-01'
+        assert out.json['end_date'] == '1990-12-31'
 
     def test_adding_group_accounts(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())

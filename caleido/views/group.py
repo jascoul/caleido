@@ -39,6 +39,12 @@ class GroupSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
                                       missing=colander.drop)
     abbreviated_name = colander.SchemaNode(colander.String(),
                                            missing=colander.drop)
+    location = colander.SchemaNode(colander.String(),
+                                   missing=colander.drop)
+    start_date = colander.SchemaNode(colander.Date(),
+                                     missing=colander.drop)
+    end_date = colander.SchemaNode(colander.Date(),
+                                   missing=colander.drop)
     parent_id = colander.SchemaNode(colander.Int(), missing=colander.drop)
     _parent_name = colander.SchemaNode(colander.String(),
                                        missing=colander.drop)

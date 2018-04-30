@@ -27,3 +27,19 @@ class SchemeTypeTest(BaseTest):
         type_ids = [t['id'] for t in out.json['types']]
         assert 'group' in type_ids
 
+
+    def test_repository_settings(self):
+        headers = dict(Authorization='Bearer %s' % self.admin_token())
+        out = self.api.get('/api/v1/schemes/settings', headers=headers)
+        settings = out.json
+        assert 'title' in settings
+        settings['title'] = 'Unittest Repository'
+        settings['foo'] = 'bar'
+        self.api.put_json('/api/v1/schemes/settings',
+                                settings,
+                                headers=headers)
+        out = self.api.get('/api/v1/schemes/settings', headers=headers)
+        settings = out.json
+        assert settings['title'] == 'Unittest Repository'
+        assert settings['foo'] == 'bar'
+

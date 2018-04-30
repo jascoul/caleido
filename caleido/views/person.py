@@ -23,6 +23,11 @@ def deferred_account_type_validator(node, kw):
     types = kw['repository'].type_config('person_account_type')
     return colander.OneOf([t['key'] for t in types])
 
+@colander.deferred
+def deferred_position_type_validator(node, kw):
+    types = kw['repository'].type_config('position_type')
+    return colander.OneOf([t['key'] for t in types])
+
 
 def person_validator(node, kw):
     if not kw.get('given_name') and not kw.get('initials'):
@@ -62,6 +67,24 @@ class PersonSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
             group_id = colander.SchemaNode(colander.Integer())
             _group_name = colander.SchemaNode(colander.String(),
                                               missing=colander.drop)
+            start_date = colander.SchemaNode(colander.Date(),
+                                             missing=colander.drop)
+            end_date = colander.SchemaNode(colander.Date(),
+                                           missing=colander.drop)
+
+
+    @colander.instantiate(missing=colander.drop)
+    class positions(colander.SequenceSchema):
+        @colander.instantiate()
+        class position(colander.MappingSchema):
+            group_id = colander.SchemaNode(colander.Integer())
+            _group_name = colander.SchemaNode(colander.String(),
+                                              missing=colander.drop)
+            type = colander.SchemaNode(colander.String(),
+                                       validator=deferred_position_type_validator)
+            description = colander.SchemaNode(colander.String(),
+                                              missing=colander.drop)
+
             start_date = colander.SchemaNode(colander.Date(),
                                              missing=colander.drop)
             end_date = colander.SchemaNode(colander.Date(),
@@ -241,7 +264,7 @@ class PersonRecordAPI(object):
         query = self.request.validated['querystring'].get('query')
         filters = []
         if query:
-            filters.append(Person.family_name.ilike('%%%s%%' % query))
+            filters.append(Person.search_terms.match(query))
         from_query=None
         query_callback = None
         if format == 'snippet':
@@ -351,7 +374,7 @@ def person_search_view(request):
     query = request.validated['querystring'].get('query')
     filters = []
     if query:
-        filters.append(Person.family_name.ilike('%%%s%%' % query))
+        filters.append(Person.search_terms.match(query))
     from_query = request.context.session.query(Person)
     from_query = from_query.options(
         Load(Person).load_only('id', 'name'))
