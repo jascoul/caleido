@@ -366,11 +366,11 @@ class GroupResource(BaseResource):
                  c.id = ANY(p.path_info) as cyclic
           FROM groups c
           JOIN rel_tree p ON c.parent_id = p.id AND NOT cyclic)
-        SELECT array_agg(DISTINCT path)
-        FROM rel_tree, unnest(rel_tree.path_info) path
+        SELECT DISTINCT UNNEST(path_info) FROM rel_tree
         ''')
-        return self.session.execute(
-            query, dict(group_id=self.model.id)).scalar() or []
+        return [row[0] for row in
+                self.session.execute(query,
+                                     dict(group_id=self.model.id)).fetchall()]
 
 
 class WorkResource(BaseResource):

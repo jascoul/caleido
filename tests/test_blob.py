@@ -14,6 +14,8 @@ class BlobStorageTest(BaseTest):
                                   'format': 'text/plain'},
                                  headers=headers,
                                  status=201)
+        blob_key = out.json.get('blob_key')
+        assert blob_key is not None
         upload_url = out.json['upload_url']
         upload_headers = headers.copy()
         upload_headers['Content-Length'] = str(len(content))
@@ -22,12 +24,9 @@ class BlobStorageTest(BaseTest):
                             content,
                             headers=upload_headers,
                             status=200)
-        assert out.json['checksum'] == '702edca0b2181c15d457eacac39de39b'
+        # there is no way to download a blob, it has to be connected
+        # to a work first.
         out = self.api.get('/api/v1/blob/records/%s' % out.json['id'],
                            headers=headers,
                            status=200)
-        download_url = out.json['download_url']
-        out = self.api.get(download_url,
-                           headers=headers,
-                           status=200)
-        assert out.body.decode('utf8') == 'This is a test!'
+        assert out.json['checksum'] == '702edca0b2181c15d457eacac39de39b'

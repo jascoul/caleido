@@ -85,33 +85,7 @@ class BlobRecordAPI(object):
         "Retrieve a Blob"
 
         result = BlobSchema().to_json(self.context.model.to_dict())
-        result['download_url'] = self.request.repository.blob.download_url(
-            result['blob_key'])
         return result
-
-    @view(permission='edit',
-          schema=BlobSchema(),
-          validators=(colander_bound_repository_body_validator,),
-          cors_origins=('*', ),
-          response_schemas={
-        '200': BlobResponseSchema(description='Ok'),
-        '401': ErrorResponseSchema(description='Unauthorized'),
-        '403': ErrorResponseSchema(description='Forbidden'),
-        '404': ErrorResponseSchema(description='Not Found'),
-        })
-    def put(self):
-        "Modify a Blob"
-        body = self.request.validated
-        body['id'] = int(self.request.matchdict['id'])
-        self.context.model.update_dict(body)
-        try:
-            self.context.put()
-        except StorageError as err:
-            self.request.errors.status = 400
-            self.request.errors.add('body', err.location, str(err))
-            return
-        return BlobSchema().to_json(self.context.model.to_dict())
-
 
     @view(permission='delete',
           response_schemas={
