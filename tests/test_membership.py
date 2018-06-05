@@ -321,7 +321,7 @@ class MembershipRetrievalWebTest(MembershipWebTest):
         assert out.json['total'] == 1
         assert len(out.json.get('snippets', [])) == 1
         assert out.json['snippets'][0]['person_name'] == 'Doe (Jane)'
-        assert out.json['snippets'][0]['group_name'] == 'Corp.'
+        assert out.json['snippets'][0]['groups'][0]['name'] == 'Corp.'
 
     def test_sub_group_memberships(self):
         if 'TRAVIS' in os.environ:

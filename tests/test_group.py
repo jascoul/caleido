@@ -104,43 +104,6 @@ class GroupWebTest(BaseTest):
                            headers=headers)
         assert out.json['accounts'] == [{'type': 'local', 'value': 'XXXX'}]
 
-    def test_insert_non_unique_account(self):
-        headers = dict(Authorization='Bearer %s' % self.admin_token())
-        self.api.post_json(
-            '/api/v1/group/records',
-            {'international_name': 'Corp.',
-             'type': 'organisation',
-             'accounts': [{'type': 'local', 'value': '1234'}]},
-             headers=headers,
-             status=201)
-        # adding a resource with a used account, fails
-        out = self.api.post_json(
-            '/api/v1/group/records',
-            {'international_name': 'Other Corp',
-             'type': 'organisation',
-             'accounts': [{'type': 'local', 'value': '1234'}]},
-             headers=headers,
-             status=400)
-        assert 'IntegrityError' in out.json['errors'][0]['description']
-        # add a user with a different account, then change the account
-        # to an existing one
-        out = self.api.post_json(
-            '/api/v1/group/records',
-            {'international_name': 'Other Corp',
-             'type': 'organisation',
-             'accounts': [{'type': 'local', 'value': 'XXX'}]},
-             headers=headers,
-             status=201)
-        last_id = out.json['id']
-        out = self.api.put_json(
-            '/api/v1/group/records/%s' % last_id,
-            {'id': last_id,
-             'international_name': 'Other Corp',
-             'type': 'organisation',
-             'accounts': [{'type': 'local', 'value': '1234'}]},
-             headers=headers,
-             status=400)
-        assert 'IntegrityError' in out.json['errors'][0]['description']
 
     def test_insert_empty_account_or_no_account(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())

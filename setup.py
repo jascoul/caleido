@@ -44,5 +44,6 @@ setup(name='caleido',
       [console_scripts]
       initialize_db = caleido.tools:initialize_db
       drop_db = caleido.tools:drop_db
+      bigquery_schema = caleido.tools:bigquery_schema
       """,
       paster_plugins=['pyramid'])

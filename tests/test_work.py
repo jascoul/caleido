@@ -226,24 +226,6 @@ class WorkPermissionWebTest(BaseTest):
         assert len(pub['identifiers']) == 1
         assert pub['identifiers'][0]['value'] == 'changed'
 
-    def test_work_with_subjects_inline(self):
-        headers = dict(Authorization='Bearer %s' % self.admin_token())
-        out = self.api.get('/api/v1/work/records/%s' % self.pub_id,
-                           headers=headers)
-        pub = out.json
-        assert len(pub['subjects']) == 0
-        pub['subjects'].append({'type': 'keyword', 'value': 'test'})
-        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
-                                pub,
-                                headers=headers)
-        assert len(pub['subjects']) == 1
-        pub['subjects'][0]['value'] = 'changed'
-        out = self.api.put_json('/api/v1/work/records/%s' % self.pub_id,
-                                pub,
-                                headers=headers)
-        assert len(pub['subjects']) == 1
-        assert pub['subjects'][0]['value'] == 'changed'
-
     def test_work_with_measures_inline(self):
         headers = dict(Authorization='Bearer %s' % self.admin_token())
         out = self.api.get('/api/v1/work/records/%s' % self.pub_id,

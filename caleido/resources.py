@@ -15,7 +15,7 @@ import transaction
 from caleido.models import (
     User, Person, Group, GroupType, GroupAccountType, PersonAccountType,
     Membership, Work, WorkType, Contributor, ContributorRole, Affiliation,
-    IdentifierType, MeasureType, DescriptionType, DescriptionFormat,
+    IdentifierType, MeasureType, DescriptionType, DescriptionFormat, Blob,
     RelationType, Relation, PositionType)
 from caleido.exceptions import StorageError
 
@@ -92,6 +92,10 @@ class BaseResource(object):
                 models.append(model)
         return models
 
+    def generate_next_id(self):
+        pkey_col = getattr(self.orm_class, self.key_col_name)
+        return self.session.execute(
+            sql.func.next_value(pkey_col.default)).scalar()
 
     def pre_put_hook(self, model):
         return model
@@ -822,3 +826,15 @@ class TypeResource(object):
             res = TypeResource(self.session, scheme_id)
             listing.append(res.to_dict())
         return {'types': listing}
+
+class BlobResource(BaseResource):
+    orm_class = Blob
+    key_col_name = 'id'
+
+    def __acl__(self):
+        yield (Allow, 'group:admin', ALL_PERMISSIONS)
+        yield (Allow, 'system.Authenticated', ['add', 'upload'])
+
+    def from_blob_key(self, blob_key):
+        self.model = self.session.query(Blob).filter(
+            Blob.blob_key==blob_key).scalar()

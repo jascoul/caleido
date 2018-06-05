@@ -5,8 +5,10 @@ from sqlalchemy import (
     Column,
     Integer,
     BigInteger,
+    Boolean,
     Unicode,
     UnicodeText,
+    Text,
     Date,
     Sequence,
     ForeignKey,
@@ -219,22 +221,27 @@ class Work(Base):
 
     descriptions = relationship('Description',
                                 back_populates='work',
+                                info={'inline_schema': True},
                                 foreign_keys=[Description.work_id],
                                 order_by='Description.position',
                                 collection_class=ordering_list('position'),
                                 cascade='all, delete-orphan')
     identifiers = relationship('Identifier',
+                               info={'inline_schema': True},
                                back_populates='work',
                                cascade='all, delete-orphan')
     measures = relationship('Measure',
+                            info={'inline_schema': True},
                             back_populates='work',
                             cascade='all, delete-orphan')
     expressions = relationship('Expression',
-                            back_populates='work',
-                            cascade='all, delete-orphan')
+                               info={'inline_schema': True},
+                               back_populates='work',
+                               cascade='all, delete-orphan')
 
     contributors = relationship('Contributor',
                                 back_populates='work',
+                                info={'inline_schema': True},
                                 order_by='Contributor.position',
                                 collection_class=ordering_list('position'),
                                 cascade='all, delete-orphan')
@@ -243,6 +250,7 @@ class Work(Base):
 
     relations = relationship('Relation',
                              back_populates='work',
+                             info={'inline_schema': True},
                              foreign_keys=[Relation.work_id],
                              order_by='Relation.position',
                              collection_class=ordering_list('position'),
@@ -320,7 +328,7 @@ class Work(Base):
 
 
     def update_dict(self, data):
-        if self.id is None and data['id']:
+        if self.id is None and data.get('id'):
             self.id = data.pop('id')
 
         start_date = data.pop('start_date', None)
@@ -449,11 +457,14 @@ class Person(Base):
     owners = relationship('Owner', back_populates='person')
     memberships = relationship('Membership',
                                back_populates='person',
+                               info={'inline_schema': True},
                                cascade='all, delete-orphan')
     positions = relationship('Position',
                              back_populates='person',
+                             info={'inline_schema': True},
                              cascade='all, delete-orphan')
     accounts = relationship('PersonAccount',
+                            info={'inline_schema': True},
                             back_populates='person',
                             cascade='all, delete-orphan')
     contributors = relationship('Contributor',
@@ -461,11 +472,14 @@ class Person(Base):
                                 cascade='all, delete-orphan')
 
     def to_dict(self):
-        result = {}
-        for prop in instance_dict(self):
-            if prop.startswith('_'):
-                continue
-            result[prop] = getattr(self, prop)
+        result = {'id': self.id,
+                  'name': self.name,
+                  'family_name': self.family_name,
+                  'given_name': self.given_name,
+                  'initials': self.initials,
+                  'family_name_prefix': self.family_name_prefix,
+                  'honorary': self.honorary,
+                  'alternative_name': self.alternative_name}
 
         result['accounts'] = [{'type': a.type, 'value': a.value}
                               for a in self.accounts]
@@ -646,33 +660,48 @@ class ExpressionAccessRight(Base):
     key = Column(Unicode(32), primary_key=True)
     label = Column(Unicode(128))
 
+class Blob(Base):
+    __tablename__ = 'blobs'
+    __table_args__ = (Index('ix_blobs_search_terms',
+                            'search_terms',
+                            postgresql_using='gin'),)
 
-class ExpressionMeasureType(Base):
-    __tablename__ = 'expression_measure_type_schemes'
-    key = Column(Unicode(32), primary_key=True)
-    label = Column(Unicode(128))
+    id = Column(Integer, Sequence('blobs_id_seq'), primary_key=True)
+    blob_key = Column(Unicode(32), nullable=False)
+    bytes = Column(Integer, nullable=False)
+    name = Column(Unicode(1024), nullable=False)
+    format = Column(Unicode(1024), nullable=False)
+    checksum = Column(Unicode(32))
+    finalized = Column(Boolean)
+    transform_name = Column(Unicode(32))
+    info =  Column(JSON)
+    text = Column(UnicodeText)
+    cover_image = Column(Text)
+    thumbnail = Column(Text)
+    search_terms = Column(TSVECTOR)
 
-class ExpressionMeasureUnit(Base):
-    __tablename__ = 'expression_measure_unit_schemes'
-    key = Column(Unicode(32), primary_key=True)
-    label = Column(Unicode(128))
+    def to_dict(self):
+        result = {'id': self.id,
+                  'blob_key': self.blob_key,
+                  'bytes': self.bytes,
+                  'format': self.format,
+                  'checksum': self.checksum,
+                  'name': self.name,
+                  'info': self.info,
+                  'finalized': self.finalized}
+        return result
 
-class ExpressionMeasure(Base):
-    __tablename__ = 'expression_measures'
 
-    id = Column(Integer, Sequence('expression_measures_id_seq'), primary_key=True)
-    expression_id = Column(Integer,
-                      ForeignKey('expressions.id'),
-                      index=True,
-                      nullable=False)
-    expression = relationship('Expression', back_populates='measures')
-    type = Column(Unicode(32),
-                  ForeignKey('expression_measure_type_schemes.key'),
-                  nullable=False)
-    unit = Column(Unicode(32),
-                  ForeignKey('expression_measure_unit_schemes.key'),
-                  nullable=False)
-    value = Column(Unicode(128), nullable=False)
+    def update_dict(self, data):
+
+        for key, value in data.items():
+            set_attribute(self, key, value)
+
+    @classmethod
+    def from_dict(cls, data):
+        blob = Blob()
+        blob.update_dict(data)
+        return blob
 
 class Expression(Base):
     __tablename__ = 'expressions'
@@ -692,15 +721,10 @@ class Expression(Base):
     access = Column(Unicode(32),
                   ForeignKey('expression_access_schemes.key'),
                   nullable=False)
-    measures = relationship('ExpressionMeasure',
-                            back_populates='expression',
-                            cascade='all, delete-orphan')
     during = Column(DateRangeType)
-    name = Column(Unicode(128), nullable=False)
-    blob_key = Column(Unicode(1024), nullable=False)
-    uri = Column(Unicode(1024), nullable=False)
-
-
+    uri = Column(Unicode(1024), nullable=True)
+    info = Column(JSON)
+    description = Column(UnicodeText, nullable=True)
 
 class PersonAccountType(Base):
     __tablename__ = 'person_account_type_schemes'
@@ -782,6 +806,7 @@ class Group(Base):
 
     accounts = relationship('GroupAccount',
                             back_populates='group',
+                            info={'inline_schema': True},
                             cascade='all, delete-orphan')
 
 
@@ -791,17 +816,18 @@ class Group(Base):
         if self.during:
             start_date, end_date = parse_duration(self.during)
 
-        return {'id': self.id,
-                'type': self.type,
-                'name': self.name,
-                'international_name': self.international_name,
-                'native_name': self.native_name,
-                'abbreviated_name': self.abbreviated_name,
-                'location': self.location,
-                'start_date': start_date,
-                'end_date': end_date}
+        result = {'id': self.id,
+                  'type': self.type,
+                  'name': self.name,
+                  'international_name': self.international_name,
+                  'native_name': self.native_name,
+                  'abbreviated_name': self.abbreviated_name,
+                  'location': self.location,
+                  'start_date': start_date,
+                  'end_date': end_date}
 
         if self.parent_id:
+            result['parent_id'] = self.parent_id
             result['_parent_name'] = self.parent.name
 
         result['accounts'] = [{'type': a.type, 'value': a.value}

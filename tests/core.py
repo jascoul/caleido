@@ -14,6 +14,9 @@ class BaseTest(unittest.TestCase):
     def app_settings(self):
         return {
             'caleido.secret': 'sekret',
+            'caleido.blob_path': '/tmp/caleido.files',
+            'caleido.blob_storage': 'local',
+            'caleido.blob_api': 'http://unittest.localhost/api/v1/blob/upload/',
             'sqlalchemy.url': (
                 'postgresql://caleido:c4l31d0@localhost/caleido')
         }

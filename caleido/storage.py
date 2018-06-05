@@ -5,6 +5,8 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 import zope.sqlalchemy
 import transaction
 
+from caleido.interfaces import IBlobStoreBackend
+from caleido.blob import BlobStore
 from caleido.models import (Base,
                             Repository,
                             User, UserGroup,
@@ -160,6 +162,7 @@ class Storage(object):
         session.execute('SET search_path TO public');
         session.flush()
 
+
 def get_tm_session(session_factory, transaction_manager):
     """
     Get a ``sqlalchemy.orm.Session`` instance backed by a transaction.
@@ -202,9 +205,12 @@ class RepositoryConfig(object):
                  'position_type': PositionType,
                  'measure_type': MeasureType}
 
-    def __init__(self, session, namespace, config_revision=0, settings=None):
+    def __init__(self, registry, session, namespace, api_host_url, config_revision=0, settings=None):
+        self.registry = registry
         self.session = session
         self.namespace = namespace
+        self.api_host_url = api_host_url
+        self._blob_store = None
         self.config_revision = config_revision
         self.settings = settings or {}
         if self.config_revision in REPOSITORY_CONFIG.get(self.namespace, {}):
@@ -214,6 +220,13 @@ class RepositoryConfig(object):
             self.cached_config = {}
             REPOSITORY_CONFIG[self.namespace] = {
                 self.config_revision: self.cached_config}
+
+    @reify
+    def blob(self):
+        backend = self.registry.queryUtility(
+            IBlobStoreBackend,
+            self.registry.settings['caleido.blob_storage'])
+        return BlobStore(backend(self))
 
     def update_settings(self, settings):
         self.settings = settings
@@ -265,7 +278,6 @@ def includeme(config):
     settings = config.get_settings()
 
     settings['tm.manager_hook'] = 'pyramid_tm.explicit_manager'
-
     # use pyramid_tm to hook the transaction lifecycle to the request
     config.include('pyramid_tm')
 
@@ -279,6 +291,8 @@ def includeme(config):
 
     config.registry['engine'] = engine
     config.registry['dbsession_factory'] = session_factory
+
+    config.registry['storage'] = Storage(config.registry)
 
     def new_dbsession(request):
         session = get_tm_session(session_factory, request.tm)
@@ -299,11 +313,19 @@ def includeme(config):
         session = request.dbsession
         namespace = request.environ['caleido.repository.namespace']
         rev = request.environ['caleido.repository.config_revision']
-        settings = request.environ['caleido.repository.settings']
-        repository = RepositoryConfig(session,
+
+        repo_settings = request.environ['caleido.repository.settings']
+
+        api_host_url = '%s://%s' % (request.scheme, request.host)
+        if request.server_port != 80:
+            api_host_url = '%s:%s' % (api_host_url, request.server_port)
+
+        repository = RepositoryConfig(request.registry,
+                                      session,
                                       namespace,
+                                      api_host_url,
                                       config_revision=rev,
-                                      settings=settings)
+                                      settings=repo_settings)
         return repository
 
     config.add_request_method(new_dbsession, 'new_dbsession')
@@ -318,5 +340,3 @@ def includeme(config):
         'repository',
         reify=True
         )
-
-    config.registry['storage'] = Storage(config.registry)

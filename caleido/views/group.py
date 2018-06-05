@@ -203,7 +203,6 @@ class GroupRecordAPI(object):
             self.request.errors.status = 400
             self.request.errors.add('body', err.location, str(err))
             return
-
         self.request.response.status = 201
         return GroupSchema().to_json(group.to_dict())
 
