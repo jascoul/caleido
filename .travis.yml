@@ -23,7 +23,7 @@ services:
   - postgresql
 
 addons:
-  - postgresql: "9.5.10"
+  - postgresql: "9.5"
 
 before_script:
   - pg_config
