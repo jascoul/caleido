@@ -30,6 +30,7 @@ class BlobSchema(colander.MappingSchema, JsonMappingSchemaSerializerMixin):
     checksum = colander.SchemaNode(colander.String(), missing=colander.drop)
     upload_url = colander.SchemaNode(colander.String(), missing=colander.drop)
 
+
 class BlobPostSchema(BlobSchema):
     # similar to blob schema, but id is optional
     id = colander.SchemaNode(colander.Int(), missing=colander.drop)
@@ -177,7 +178,27 @@ def blob_upload_local_view(request):
     blobstore.receive_blob(request, request.context)
     return BlobSchema().to_json(request.context.model.to_dict())
 
+blob_transform = Service(name='BlobTransform',
+                         path='/api/v1/blob/transform/{blob_key}',
+                         factory=ResourceFactory(BlobResource),
+                         api_security=[{'jwt':[]}],
+                         tags=['blob'],
+                         cors_origins=('*', ))
+@blob_transform.post(permission='transform')
+def blob_transform_view(request):
+    blob_key = request.matchdict['blob_key']
+    request.context.from_blob_key(blob_key)
+    if request.context.model is None:
+        raise HTTPNotFound()
+    blobstore = request.repository.blob
+    if not blobstore.blob_exists(blob_key):
+        raise HTTPPreconditionFailed('File is missing')
 
+    blobstore.transform_blob(request.context)
+    return request.context.model.to_dict()
+
+
+"""
 blob_download = Service(name='BlobDownload',
                      path='/api/v1/blob/download/{blob_key}',
                      factory=ResourceFactory(BlobResource),
@@ -198,3 +219,4 @@ def blob_download_local_view(request):
                                        request.context)
     return response
 
+"""

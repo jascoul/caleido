@@ -11,6 +11,10 @@ python:
   - "3.5"
   - "3.6"
 
+before_install:
+  - sudo apt-get install -y poppler-utils
+  - sudo apt-get install -y imagemagick
+
 install:
   - pip install -e .
   - pip install tox

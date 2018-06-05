@@ -12,10 +12,6 @@ class IBlobStoreBackend(Interface):
         "Create an upload url that can be used to POST bytes"
         pass
 
-    def download_url(self, blob_key):
-        "Create a download url that can be used to GET bytes"
-        pass
-
     def receive_blob(self, request, blob):
         """Optionally do something with the upload request
 
@@ -38,6 +34,12 @@ class IBlobStoreBackend(Interface):
 
     def serve_blob(self, request, response, blob):
         "Modify the response to servce bytes from blob_key"
+        pass
+
+    def local_path(self, blob):
+        """Returns a local path to the blob.
+        This means the blob has to be downloaded to the server
+        for some backends"""
         pass
 
 

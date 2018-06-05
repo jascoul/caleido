@@ -688,6 +688,9 @@ class Blob(Base):
                   'checksum': self.checksum,
                   'name': self.name,
                   'info': self.info,
+                  'thumbnail': self.thumbnail,
+                  'text': self.text,
+                  'transform_name': self.transform_name,
                   'finalized': self.finalized}
         return result
 
