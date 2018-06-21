@@ -29,19 +29,19 @@ Setting up Caleido
 Tests
 -----
 
-* Install tox::
+* Install dependencies::
 
-    pip install tox
+    pip install tox pytest webtest
+
 * Run the unittests::
 
-    tox 
+    pytest tests
 
-Running the API
----------------
+Starting the API server
+-----------------------
 
 * Start the development webserver::
 
     pserve caleido.ini
 
 * Visit the API browser at http://localhost:6543/api/swagger.html
-

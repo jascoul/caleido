@@ -1,0 +1,14 @@
+cornice
+cornice_swagger
+pyramid_chameleon
+passlib
+waitress
+sqlalchemy
+sqlalchemy-utils
+pyramid_tm
+pyramid_retry
+pyramid_jwt
+zope.sqlalchemy
+psycopg2
+gunicorn
+intervals

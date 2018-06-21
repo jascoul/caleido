@@ -5,6 +5,8 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 with open(os.path.join(here, 'README.rst')) as f:
     README = f.read()
+with open(os.path.join(here, 'requirements.txt')) as f:
+    REQUIREMENTS = f.read().splitlines()
 
 
 setup(name='caleido',
@@ -25,19 +27,7 @@ setup(name='caleido',
       packages=find_packages(),
       include_package_data=True,
       zip_safe=False,
-      install_requires=['cornice',
-                        'cornice_swagger',
-                        'pyramid_chameleon',
-                        'passlib',
-                        'waitress',
-                        'sqlalchemy',
-                        'sqlalchemy-utils',
-                        'pyramid_tm',
-                        'pyramid_retry',
-                        'pyramid_jwt',
-                        'zope.sqlalchemy',
-                        'psycopg2',
-                        'intervals'],
+      install_requires=REQUIREMENTS,
       entry_points="""\
       [paste.app_factory]
       main=caleido:main
